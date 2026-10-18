@@ -502,8 +502,36 @@ fn project_state_path(project_dir: &PathBuf) -> PathBuf {
     }
 }
 
+/// Each project's state file's modification time as this process last read or
+/// wrote it. Two processes write it — the window, and `shipscreen mcp` when
+/// Claude drives it — so a different time means the other one did.
+fn state_seen() -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>> {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>>> =
+        std::sync::OnceLock::new();
+    SEEN.get_or_init(Default::default)
+}
+
+fn state_mtime(project_dir: &PathBuf) -> Option<std::time::SystemTime> {
+    std::fs::metadata(project_state_path(project_dir)).and_then(|m| m.modified()).ok()
+}
+
+fn note_state(project_dir: &PathBuf) {
+    let mut seen = state_seen().lock().unwrap_or_else(|e| e.into_inner());
+    seen.insert(project_dir.clone(), state_mtime(project_dir));
+}
+
+/// Whether another process wrote the project's state since this one last read
+/// or wrote it. Notes the current state, so each change is reported once.
+fn project_state_changed_elsewhere(project_dir: &PathBuf) -> bool {
+    let now = state_mtime(project_dir);
+    let mut seen = state_seen().lock().unwrap_or_else(|e| e.into_inner());
+    seen.insert(project_dir.clone(), now).is_some_and(|before| before != now)
+}
+
 fn load_project_state(project_dir: &PathBuf) -> ProjectState {
-    let mut state = std::fs::read_to_string(project_state_path(project_dir))
+    let text = std::fs::read_to_string(project_state_path(project_dir));
+    note_state(project_dir);
+    let mut state = text
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_else(ProjectState::with_defaults);
@@ -526,6 +554,7 @@ fn save_project_state(project_dir: &PathBuf, state: &ProjectState) {
             if let Err(e) = std::fs::write(project_state_path(project_dir), &json) {
                 eprintln!("[ShipScreen] ⚠️  Failed to save project state to {:?}: {e}", project_state_path(project_dir));
             }
+            note_state(project_dir);
         }
         Err(e) => {
             eprintln!("[ShipScreen] ⚠️  Failed to serialize project state: {e}");
@@ -1429,6 +1458,14 @@ enum AndroidPublishPhase {
 // main
 // ---------------------------------------------------------------------------
 fn main() {
+    // `shipscreen mcp`: the projects over stdio for an MCP client, and no
+    // window. Before the log subscriber, which writes to stdout: there,
+    // anything but the protocol is a corrupt message.
+    #[cfg(not(target_os = "android"))]
+    if std::env::args().nth(1).as_deref() == Some("mcp") {
+        toolpath::init();
+        return workspace::mcp::serve();
+    }
     tracing_subscriber::fmt::init();
     // Before any thread starts: PATH is read by every command ShipScreen runs.
     toolpath::init();
