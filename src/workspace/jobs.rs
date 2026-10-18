@@ -517,58 +517,236 @@ pub(super) fn publish_google_play(ws: Ws) {
 
 // ---- Run build script ----
 // Ensures scripts exist (generates if missing), then runs the chosen one.
+/// What a build needs from the project and the team settings, read once when
+/// it starts.
+#[derive(Clone)]
+pub(super) struct BuildInputs {
+    dir: PathBuf,
+    app_name: String,
+    project_slug: String,
+    ios_bundle_id: String,
+    android_bundle_id: String,
+    identity: String,
+    profile: String,
+    version: String,
+    ios_build_number: u32,
+    android_version_code: u32,
+    keystore_setting: String,
+    alias: String,
+    logo_path: Option<PathBuf>,
+}
+
+impl BuildInputs {
+    pub(super) fn of(dir: &std::path::Path, p: &ProjectState, s: &Settings) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            app_name: p.app_name.clone(),
+            project_slug: p.project_slug.clone(),
+            ios_bundle_id: p.ios_bundle_id.clone(),
+            android_bundle_id: p.android_bundle_id.clone(),
+            identity: s.apple_identity.clone(),
+            profile: p.provisioning_profile.clone(),
+            version: p.version.trim().to_string(),
+            ios_build_number: p.ios_build_number,
+            android_version_code: p.android_version_code,
+            keystore_setting: s.android_keystore_path.clone(),
+            alias: key_alias(p),
+            logo_path: p.logo_path.clone(),
+        }
+    }
+
+    /// Why `script_name` can't start, if it can't: checked before the job
+    /// drawer shows the build as running.
+    pub(super) fn problem(&self, script_name: &str) -> Option<String> {
+        if self.app_name.trim().is_empty()
+            || self.project_slug.trim().is_empty()
+            || (self.ios_bundle_id.trim().is_empty() && self.android_bundle_id.trim().is_empty())
+        {
+            return Some("App Name, Project Slug, and at least one Bundle ID are required. Fill them in the App step.".into());
+        }
+        if !valid_version(&self.version) {
+            return Some("Set a valid version (e.g. 1.2.0) in the Version step.".into());
+        }
+        if script_name.contains("ios") && (self.identity.trim().is_empty() || self.profile.trim().is_empty()) {
+            return Some(
+                "Apple Identity and Provisioning Profile are required for iOS. Set them in the Accounts step.".into(),
+            );
+        }
+        // Resolved afresh: the project's .env may have changed since the card was drawn.
+        if script_name == "build_android_release.sh"
+            && !resolve_android_signing(&self.dir, &self.keystore_setting, &self.alias).0.ok()
+        {
+            return Some(
+                "The Android upload key isn't set up. Choose or create it in the Accounts step, under Android upload key."
+                    .into(),
+            );
+        }
+        None
+    }
+}
+
+/// The build itself: the logo, the build scripts, the environment, then
+/// ShipScreen's own Android build or the project's script. The window's
+/// Build step and `mcp` both run this; the build numbers are bumped by the
+/// caller, since each holds the project state its own way.
+pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Result<(), String> {
+    let dir = i.dir.clone();
+    // 0. Sync logo → assets/icon.png so the build script always uses the latest logo.
+    // Always re-encode as genuine PNG — the source may be a JPEG renamed to .png,
+    // which Apple's validator rejects even though the extension looks right.
+    if let Some(src) = &i.logo_path {
+        let dest = dir.join("assets").join("icon.png");
+        let src2 = src.clone();
+        let dest2 = dest.clone();
+        match tokio::task::spawn_blocking(move || {
+            image::open(&src2)
+                .map_err(|e| e.to_string())
+                .and_then(|img| {
+                    // Convert to RGB (drop alpha) and save as real PNG
+                    img.to_rgb8()
+                        .save_with_format(&dest2, image::ImageFormat::Png)
+                        .map_err(|e| e.to_string())
+                })
+        })
+        .await
+        {
+            Ok(Ok(_)) => log.push("🖼️  Logo saved as true PNG to assets/icon.png".into()),
+            Ok(Err(e)) => log.push(format!("⚠️  Could not encode logo as PNG: {e}")),
+            Err(e) => log.push(format!("⚠️  Logo task failed: {e}")),
+        }
+    }
+
+    // 1. Ensure scripts exist (create if missing)
+    let created = tokio::task::spawn_blocking({
+        let i = i.clone();
+        move || {
+            ensure_build_scripts(
+                &i.dir,
+                &i.app_name,
+                &i.project_slug,
+                &i.ios_bundle_id,
+                &i.android_bundle_id,
+                &i.identity,
+                &i.profile,
+                &i.version,
+                i.ios_build_number,
+                i.android_version_code,
+            )
+        }
+    })
+    .await
+    .unwrap_or_default();
+
+    for name in &created {
+        log.push(format!("📝 Created {name}"));
+    }
+    if !created.contains(&script_name) && dir.join(&script_name).exists() {
+        log.push(format!(
+            "📌 Using your own {script_name} as it is — ShipScreen only rewrites scripts it wrote. \
+             Its version and build number come from the script, not the Version step."
+        ));
+    }
+
+    // 2. Everything the build needs from the environment: the project's
+    //    .env, the upload key (team settings + password store) and Java.
+    let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
+    let mut child_env: Vec<(String, String)> = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let (signing, password) = resolve_android_signing(&dir, &i.keystore_setting, &i.alias);
+    if let (false, Some(ks)) = (env.contains_key("ANDROID_KEYSTORE_PATH"), signing.keystore.clone()) {
+        child_env.push(("ANDROID_KEYSTORE_PATH".into(), ks.to_string_lossy().to_string()));
+    }
+    if !env.contains_key("ANDROID_KEY_ALIAS") {
+        child_env.push(("ANDROID_KEY_ALIAS".into(), signing.alias.clone()));
+    }
+    if let (false, Some(pw)) = (env.contains_key("ANDROID_KEYSTORE_PASSWORD"), password) {
+        child_env.push(("ANDROID_KEYSTORE_PASSWORD".into(), pw));
+    }
+    // Gradle needs a JDK it can run on: the one picked in the Java card,
+    // else the project's JAVA_HOME, else the best installed — never one
+    // too old or too new for the project's Gradle.
+    let env_java = env.get("JAVA_HOME").cloned().or_else(|| std::env::var("JAVA_HOME").ok());
+    let (jdk, notes) = if script_name.contains("ios") {
+        (None, Vec::new())
+    } else {
+        let dir = dir.clone();
+        tokio::task::spawn_blocking(move || java::for_project(&dir, env_java.as_deref())).await.unwrap_or_default()
+    };
+    for n in notes {
+        log.push(format!("⚠️  {n}"));
+    }
+    if let Some(j) = jdk {
+        log.push(format!("☕ Java {} ({}) · {}", j.version, j.source, j.home.display()));
+        let path = env.get("PATH").map(Into::into).or_else(|| std::env::var_os("PATH")).unwrap_or_default();
+        let path = std::env::join_paths(std::iter::once(j.home.join("bin")).chain(std::env::split_paths(&path)))
+            .unwrap_or(path);
+        child_env.push(("JAVA_HOME".into(), j.home.to_string_lossy().to_string()));
+        child_env.push(("PATH".into(), path.to_string_lossy().to_string()));
+    }
+
+    // 3. Android builds ShipScreen owns run in ShipScreen itself, the same
+    //    on every OS. A script the developer wrote runs as it is.
+    let script_path = dir.join(&script_name);
+    let own_script = script_path.exists() && !created.contains(&script_name);
+    match android_build::Kind::from_script(&script_name).filter(|_| !own_script) {
+        Some(kind) => {
+            let find = |key: &str| child_env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+            let job = android_build::Job {
+                kind,
+                app_name: i.app_name.clone(),
+                slug: i.project_slug.clone(),
+                package: i.android_bundle_id.clone(),
+                version_name: i.version.clone(),
+                version_code: i.android_version_code,
+                keystore: find("ANDROID_KEYSTORE_PATH").map(|v| signing::expand_home(&v)),
+                alias: find("ANDROID_KEY_ALIAS").unwrap_or_default(),
+                env: child_env.clone(),
+            };
+            android_build::run(dir.clone(), job, log).await.map(|_| ())
+        }
+        None => {
+            if !script_path.exists() {
+                return Err(format!("{script_name} not found in project directory"));
+            }
+            if script_name.contains("ios") && !cfg!(target_os = "macos") {
+                return Err("iOS builds need a Mac with Xcode.".into());
+            }
+            let Some(bash) = find_bash() else {
+                return Err(format!(
+                    "{script_name} is a bash script and this computer has no bash. Install Git for Windows \
+                     (https://git-scm.com/download/win), or delete the script to let ShipScreen build Android itself."
+                ));
+            };
+            log.push(format!("▶ Running {script_name}…"));
+            let mut cmd = std::process::Command::new(bash);
+            cmd.arg(&script_path).current_dir(&dir).env("CI", "1");
+            for (k, v) in &child_env {
+                cmd.env(k, v);
+            }
+            stream_command(cmd, &script_name, log).await
+        }
+    }
+}
+
+/// The build number a successful `script_name` used is taken in the store's
+/// eyes: with auto-increment on, the next release build gets a higher one.
+pub(super) fn bump_after_build(p: &mut ProjectState, script_name: &str) {
+    if !p.auto_increment_build {
+        return;
+    }
+    match script_name {
+        "build_ios_distribution.sh" => p.ios_build_number += 1,
+        "build_android_release.sh" => p.android_version_code += 1,
+        _ => {}
+    }
+}
+
 pub(super) fn run_build(ws: Ws, script_name: String) {
-    let proj = ws.proj;
-    let settings = ws.settings;
     let mut build_phase = ws.build_phase;
     let mut build_log = ws.build_log;
     let mut refresh = ws.refresh;
-    let proj_dir = ws.dir();
-
-    let app_name = proj.read().app_name.clone();
-    let project_slug = proj.read().project_slug.clone();
-    let ios_bundle_id = proj.read().ios_bundle_id.clone();
-    let android_bundle_id = proj.read().android_bundle_id.clone();
-    let identity = settings.read().apple_identity.clone();
-    let profile = proj.read().provisioning_profile.clone();
-    let version = proj.read().version.trim().to_string();
-    let ios_build_number = proj.read().ios_build_number;
-    let android_version_code = proj.read().android_version_code;
-    let keystore_setting = settings.read().android_keystore_path.clone();
-    let alias = key_alias(&proj.read());
-    let logo_path = proj.read().logo_path.clone();
-
-    // Validate required fields
-    if app_name.trim().is_empty()
-        || project_slug.trim().is_empty()
-        || (ios_bundle_id.trim().is_empty() && android_bundle_id.trim().is_empty())
-    {
-        build_phase.set(BuildPhase::Error(
-                "App Name, Project Slug, and at least one Bundle ID are required. Fill them in the App step.".into()
-            ));
-        ws.show_job(JobKind::Build);
-        return;
-    }
-    if !valid_version(&version) {
-        build_phase.set(BuildPhase::Error(
-            "Set a valid version (e.g. 1.2.0) in the Version step.".into(),
-        ));
-        ws.show_job(JobKind::Build);
-        return;
-    }
-    if script_name.contains("ios") && (identity.trim().is_empty() || profile.trim().is_empty()) {
-        build_phase.set(BuildPhase::Error(
-                "Apple Identity and Provisioning Profile are required for iOS. Set them in the Accounts step.".into()
-            ));
-        ws.show_job(JobKind::Build);
-        return;
-    }
-
-    // Resolved afresh: the project's .env may have changed since the card was drawn.
-    if script_name == "build_android_release.sh" && !resolve_android_signing(&proj_dir, &keystore_setting, &alias).0.ok() {
-        build_phase.set(BuildPhase::Error(
-            "The Android upload key isn't set up. Choose or create it in the Accounts step, under Android upload key.".into(),
-        ));
+    let inputs = BuildInputs::of(&ws.dir(), &ws.proj.read(), &ws.settings.read());
+    if let Some(problem) = inputs.problem(&script_name) {
+        build_phase.set(BuildPhase::Error(problem));
         ws.show_job(JobKind::Build);
         return;
     }
@@ -579,168 +757,11 @@ pub(super) fn run_build(ws: Ws, script_name: String) {
     last_build.set(script_name.clone());
     ws.show_job(JobKind::Build);
 
-    let dir = proj_dir.clone();
     ws.spawn(async move {
-        // 0. Sync logo → assets/icon.png so the build script always uses the latest logo.
-        // Always re-encode as genuine PNG — the source may be a JPEG renamed to .png,
-        // which Apple's validator rejects even though the extension looks right.
-        if let Some(src) = &logo_path {
-            let dest = dir.join("assets").join("icon.png");
-            let src2 = src.clone();
-            let dest2 = dest.clone();
-            match tokio::task::spawn_blocking(move || {
-                image::open(&src2)
-                    .map_err(|e| e.to_string())
-                    .and_then(|img| {
-                        // Convert to RGB (drop alpha) and save as real PNG
-                        img.to_rgb8()
-                            .save_with_format(&dest2, image::ImageFormat::Png)
-                            .map_err(|e| e.to_string())
-                    })
-            })
-            .await
-            {
-                Ok(Ok(_)) => build_log
-                    .write()
-                    .push("🖼️  Logo saved as true PNG to assets/icon.png".into()),
-                Ok(Err(e)) => build_log
-                    .write()
-                    .push(format!("⚠️  Could not encode logo as PNG: {e}")),
-                Err(e) => build_log.write().push(format!("⚠️  Logo task failed: {e}")),
-            }
-        }
-
-        // 1. Ensure scripts exist (create if missing)
-        let created = tokio::task::spawn_blocking({
-            let dir = dir.clone();
-            let app_name = app_name.clone();
-            let project_slug = project_slug.clone();
-            let ios_bundle_id = ios_bundle_id.clone();
-            let android_bundle_id = android_bundle_id.clone();
-            let identity = identity.clone();
-            let profile = profile.clone();
-            let version = version.clone();
-            move || {
-                ensure_build_scripts(
-                    &dir,
-                    &app_name,
-                    &project_slug,
-                    &ios_bundle_id,
-                    &android_bundle_id,
-                    &identity,
-                    &profile,
-                    &version,
-                    ios_build_number,
-                    android_version_code,
-                )
-            }
-        })
-        .await
-        .unwrap_or_default();
-
-        for name in &created {
-            build_log.write().push(format!("📝 Created {name}"));
-        }
-        if !created.contains(&script_name) && dir.join(&script_name).exists() {
-            build_log.write().push(format!(
-                "📌 Using your own {script_name} as it is — ShipScreen only rewrites scripts it wrote. \
-                 Its version and build number come from the script, not the Version step."
-            ));
-        }
-
-        // 2. Everything the build needs from the environment: the project's
-        //    .env, the upload key (team settings + password store) and Java.
-        let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
-        let mut child_env: Vec<(String, String)> = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        let (signing, password) = resolve_android_signing(&dir, &keystore_setting, &alias);
-        if let (false, Some(ks)) = (env.contains_key("ANDROID_KEYSTORE_PATH"), signing.keystore.clone()) {
-            child_env.push(("ANDROID_KEYSTORE_PATH".into(), ks.to_string_lossy().to_string()));
-        }
-        if !env.contains_key("ANDROID_KEY_ALIAS") {
-            child_env.push(("ANDROID_KEY_ALIAS".into(), signing.alias.clone()));
-        }
-        if let (false, Some(pw)) = (env.contains_key("ANDROID_KEYSTORE_PASSWORD"), password) {
-            child_env.push(("ANDROID_KEYSTORE_PASSWORD".into(), pw));
-        }
-        // Gradle needs a JDK it can run on: the one picked in the Java card,
-        // else the project's JAVA_HOME, else the best installed — never one
-        // too old or too new for the project's Gradle.
-        let env_java = env.get("JAVA_HOME").cloned().or_else(|| std::env::var("JAVA_HOME").ok());
-        let (jdk, notes) = if script_name.contains("ios") {
-            (None, Vec::new())
-        } else {
-            let dir = dir.clone();
-            tokio::task::spawn_blocking(move || java::for_project(&dir, env_java.as_deref())).await.unwrap_or_default()
-        };
-        for n in notes {
-            build_log.write().push(format!("⚠️  {n}"));
-        }
-        if let Some(j) = jdk {
-            build_log.write().push(format!("☕ Java {} ({}) · {}", j.version, j.source, j.home.display()));
-            let path = env.get("PATH").map(Into::into).or_else(|| std::env::var_os("PATH")).unwrap_or_default();
-            let path = std::env::join_paths(std::iter::once(j.home.join("bin")).chain(std::env::split_paths(&path)))
-                .unwrap_or(path);
-            child_env.push(("JAVA_HOME".into(), j.home.to_string_lossy().to_string()));
-            child_env.push(("PATH".into(), path.to_string_lossy().to_string()));
-        }
-
-        // 3. Android builds ShipScreen owns run in ShipScreen itself, the same
-        //    on every OS. A script the developer wrote runs as it is.
-        let script_path = dir.join(&script_name);
-        let own_script = script_path.exists() && !created.contains(&script_name);
-        let result = match android_build::Kind::from_script(&script_name).filter(|_| !own_script) {
-            Some(kind) => {
-                let find = |key: &str| child_env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.clone());
-                let job = android_build::Job {
-                    kind,
-                    app_name: app_name.clone(),
-                    slug: project_slug.clone(),
-                    package: android_bundle_id.clone(),
-                    version_name: version.clone(),
-                    version_code: android_version_code,
-                    keystore: find("ANDROID_KEYSTORE_PATH").map(|v| signing::expand_home(&v)),
-                    alias: find("ANDROID_KEY_ALIAS").unwrap_or_default(),
-                    env: child_env.clone(),
-                };
-                android_build::run(dir.clone(), job, build_log).await.map(|_| ())
-            }
-            None => {
-                if !script_path.exists() {
-                    build_phase.set(BuildPhase::Error(format!("{script_name} not found in project directory")));
-                    return;
-                }
-                if script_name.contains("ios") && !cfg!(target_os = "macos") {
-                    build_phase.set(BuildPhase::Error("iOS builds need a Mac with Xcode.".into()));
-                    return;
-                }
-                let Some(bash) = find_bash() else {
-                    build_phase.set(BuildPhase::Error(format!(
-                        "{script_name} is a bash script and this computer has no bash. Install Git for Windows \
-                         (https://git-scm.com/download/win), or delete the script to let ShipScreen build Android itself."
-                    )));
-                    return;
-                };
-                build_log.write().push(format!("▶ Running {script_name}…"));
-                let mut cmd = std::process::Command::new(bash);
-                cmd.arg(&script_path).current_dir(&dir).env("CI", "1");
-                for (k, v) in &child_env {
-                    cmd.env(k, v);
-                }
-                stream_command(cmd, &script_name, build_log).await
-            }
-        };
-        match result {
+        match build(inputs, script_name.clone(), build_log.into()).await {
             Ok(()) => {
                 build_phase.set(BuildPhase::Success(script_name.clone()));
-                // The number is now taken in the store's eyes; the next
-                // release build needs a higher one.
-                if proj.peek().auto_increment_build {
-                    match script_name.as_str() {
-                        "build_ios_distribution.sh" => ws.update(|p| p.ios_build_number += 1),
-                        "build_android_release.sh" => ws.update(|p| p.android_version_code += 1),
-                        _ => {}
-                    }
-                }
+                ws.update(|p| bump_after_build(p, &script_name));
             }
             Err(e) => build_phase.set(BuildPhase::Error(e)),
         }
@@ -1001,47 +1022,168 @@ pub(super) fn generate_ai(ws: Ws) {
 }
 
 // ---- Manual Generate ----
+/// The languages selected for generation that have no source screens yet.
+pub(super) fn missing_sources(p: &ProjectState) -> Option<String> {
+    let empty: Vec<&str> =
+        p.locales.iter().filter(|loc| p.sources_for(loc).is_empty()).map(|l| l.as_str()).collect();
+    (!empty.is_empty())
+        .then(|| format!("No images for locale(s): {}. Add images in each language tab.", empty.join(", ")))
+}
+
+/// Manual screenshots for every selected language: each source screen on the
+/// primary or secondary colour, under its title and subtitle, written to
+/// every export size. `on_preview` gets each screen's preview (its 6.7″ copy,
+/// URL-encoded) as soon as it is written. Returns every file written. The
+/// window's Screenshots step and `mcp` both run this.
+pub(super) async fn generate_manual_images(
+    proj_dir: PathBuf,
+    p: ProjectState,
+    log: Log,
+    mut on_preview: impl FnMut(String),
+) -> Result<Vec<(String, PathBuf)>, String> {
+    if let Some(problem) = missing_sources(&p) {
+        return Err(problem);
+    }
+    let targets = ExportTargets::for_project(&proj_dir, &p);
+    // Desktop screens are landscape; phone and tablet ones are portrait.
+    let desktop = p.platform_type.has_desktop();
+    let primary_rgba = parse_hex_color(&p.primary_color).unwrap_or(Rgba([59, 130, 246, 255]));
+    let secondary_rgba = if !p.secondary_color.is_empty() {
+        parse_hex_color(&p.secondary_color).unwrap_or(lighten_color(primary_rgba))
+    } else {
+        lighten_color(primary_rgba)
+    };
+    let mut all_outputs: Vec<(String, PathBuf)> = Vec::new();
+
+    // Each locale has its own images — process independently
+    for locale in &p.locales {
+        let srcs = p.sources_for(locale);
+        let total = srcs.len();
+        // Drop last run's phone screenshots so fewer screens this time
+        // doesn't leave old ones behind in the fastlane folder.
+        if !targets.android.is_empty() {
+            let _ = std::fs::remove_dir_all(
+                targets.android_root.join(stores::play_language(locale)).join("images").join("phoneScreenshots"),
+            );
+        }
+        if !targets.desktop.is_empty() {
+            let _ = std::fs::remove_dir_all(targets.desktop_dir.join(locale));
+        }
+        let texts = p.texts_for(locale);
+        log.push(format!("─── Generating locale: {locale} ({total} image(s)) ───"));
+
+        for (idx, src) in srcs.iter().enumerate() {
+            let screen_num = idx + 1;
+            log.push(format!("[{locale}] Processing image {screen_num}/{total}…"));
+
+            // Clone everything the blocking thread needs.
+            let src2 = src.clone();
+            let locale2 = locale.clone();
+            let targets2 = targets.clone();
+            let play_locale = stores::play_language(locale).to_string();
+            let bg_color = if idx % 2 == 0 { primary_rgba } else { secondary_rgba };
+            let (title, subtitle) = texts.get(idx).cloned().unwrap_or_default();
+
+        let cpu = tokio::task::spawn_blocking(
+            move || -> Result<(Vec<(String, PathBuf)>, Option<String>), String> {
+                let (w, h): (u32, u32) = if desktop { (2560, 1600) } else { (1290, 2796) };
+                let font = FontRef::try_from_slice(ROBOTO_FONT).expect("font");
+
+                let screenshot_bytes = std::fs::read(&src2)
+                    .map_err(|e| format!("Failed to read image {screen_num}: {e}"))?;
+                let screenshot = image::load_from_memory(&screenshot_bytes)
+                    .map_err(|e| format!("Failed to decode image {screen_num}: {e}"))?
+                    .to_rgba8();
+
+                let mut img = RgbaImage::from_pixel(w, h, bg_color);
+                let text_color = get_contrast_color(bg_color);
+                // (title size, title y, subtitle size, subtitle y)
+                let (ts, ty, ss, sy) = if desktop { (110.0, 90, 56.0, 230) } else { (120.0, 200, 60.0, 350) };
+                if !title.is_empty() {
+                    draw_centered_text(&mut img, &font, &title, PxScale::from(ts), text_color, ty);
+                }
+                if !subtitle.is_empty() {
+                    draw_centered_text(&mut img, &font, &subtitle, PxScale::from(ss), text_color, sy);
+                }
+
+                if desktop {
+                    // Fit the whole window below the captions, keeping
+                    // its proportions — a desktop screenshot can be any shape.
+                    let (area_x, area_y) = (200u32, 360u32);
+                    let (area_w, area_h) = (w - 2 * area_x, h - area_y - 120);
+                    let scale = (area_w as f64 / screenshot.width() as f64)
+                        .min(area_h as f64 / screenshot.height() as f64);
+                    let fit_w = ((screenshot.width() as f64 * scale) as u32).max(1);
+                    let fit_h = ((screenshot.height() as f64 * scale) as u32).max(1);
+                    let resized = image::imageops::resize(&screenshot, fit_w, fit_h, FilterType::Lanczos3);
+                    image::imageops::overlay(
+                        &mut img,
+                        &resized,
+                        (area_x + (area_w - fit_w) / 2) as i64,
+                        (area_y + (area_h - fit_h) / 2) as i64,
+                    );
+                } else {
+                    let phone_w = (w as f64 * 0.7) as u32;
+                    let phone_h = (phone_w as f64 * 2.16) as u32;
+                    let phone_x = (w - phone_w) / 2;
+                    let phone_y = h - phone_h - 150;
+                    let resized = image::imageops::resize(&screenshot, phone_w, phone_h, FilterType::Lanczos3);
+                    image::imageops::overlay(&mut img, &resized, phone_x as i64, phone_y as i64);
+                }
+
+                let composited_bytes = {
+                    let mut buf = std::io::Cursor::new(Vec::new());
+                    img.write_to(&mut buf, image::ImageFormat::Png)
+                        .map_err(|e| format!("Failed to encode image {screen_num}: {e}"))?;
+                    buf.into_inner()
+                };
+
+                let paths = resize_to_targets(
+                    &composited_bytes,
+                    screen_num,
+                    &locale2,
+                    &play_locale,
+                    &targets2,
+                )
+                .map_err(|e| {
+                    format!("Resize failed for [{locale2}] screen {screen_num}: {e}")
+                })?;
+
+                let preview =
+                    paths.iter().find(|(l, _)| l.contains("6.7")).or_else(|| paths.first()).map(|(_, p)| {
+                        urlencoding::encode(&p.to_string_lossy().to_string()).into_owned()
+                    });
+
+                Ok((paths, preview))
+            },
+        );
+
+            let (paths, preview) = match cpu.await {
+                Ok(Ok(v)) => v,
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(format!("Thread panic: {e}")),
+            };
+
+            for (label, _) in &paths {
+                log.push(format!("Saved: {label}"));
+            }
+            if let Some(enc) = preview {
+                on_preview(enc);
+            }
+            all_outputs.extend(paths);
+        }
+    }
+    log.push(format!("Done! Manual screenshots generated for {} locale(s).", p.locales.len()));
+    Ok(all_outputs)
+}
+
 pub(super) fn generate_manual(ws: Ws) {
     let mut proj = ws.proj;
     let mut phase = ws.gen_phase;
     let mut log_lines = ws.gen_log;
-    let mut add_log = move |msg: String| {
-        log_lines.write().push(msg);
-    };
     let proj_dir = ws.dir();
-
-    let primary = proj.read().primary_color.clone();
-    let secondary = proj.read().secondary_color.clone();
-    let selected_locales = proj.read().locales.clone();
-    // Per-locale sources and texts
-    let locale_srcs: std::collections::HashMap<String, Vec<PathBuf>> = selected_locales
-        .iter()
-        .map(|loc| (loc.clone(), proj.read().sources_for(loc)))
-        .collect();
-    let locale_texts_map: std::collections::HashMap<String, Vec<(String, String)>> =
-        selected_locales
-            .iter()
-            .map(|loc| (loc.clone(), proj.read().texts_for(loc)))
-            .collect();
-    let targets = ExportTargets::for_project(&proj_dir, &proj.read());
-    // Desktop screens are landscape; phone and tablet ones are portrait.
-    let desktop = proj.read().platform_type.has_desktop();
-    let proj_dir = proj_dir.clone();
-
-    // Check every locale has at least one image
-    let empty_locales: Vec<&String> = selected_locales
-        .iter()
-        .filter(|loc| locale_srcs.get(*loc).map(|v| v.is_empty()).unwrap_or(true))
-        .collect();
-    if !empty_locales.is_empty() {
-        phase.set(AppPhase::Error(format!(
-            "No images for locale(s): {}. Add images in each language tab.",
-            empty_locales
-                .iter()
-                .map(|l| l.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )));
+    if let Some(problem) = missing_sources(&proj.read()) {
+        phase.set(AppPhase::Error(problem));
         return;
     }
 
@@ -1049,164 +1191,49 @@ pub(super) fn generate_manual(ws: Ws) {
         phase.set(AppPhase::GeneratingManual);
         log_lines.set(Vec::new());
         ws.show_job(JobKind::Screenshots);
-        {
+        let snapshot = {
             let mut p = proj.write();
             p.generated_urls.clear();
             p.output_paths.clear();
-        }
-
-        let primary_rgba = parse_hex_color(&primary).unwrap_or(Rgba([59, 130, 246, 255]));
-        let secondary_rgba = if !secondary.is_empty() {
-            parse_hex_color(&secondary).unwrap_or(lighten_color(primary_rgba))
-        } else {
-            lighten_color(primary_rgba)
+            p.clone()
         };
-        let mut all_outputs: Vec<(String, PathBuf)> = Vec::new();
-
-        // Each locale has its own images — process independently
-        for locale in &selected_locales {
-            let srcs = locale_srcs.get(locale).cloned().unwrap_or_default();
-            let total = srcs.len();
-            // Drop last run's phone screenshots so fewer screens this time
-            // doesn't leave old ones behind in the fastlane folder.
-            if !targets.android.is_empty() {
-                let _ = std::fs::remove_dir_all(
-                    targets.android_root.join(stores::play_language(locale)).join("images").join("phoneScreenshots"),
-                );
+        let preview = move |enc: String| proj.write().generated_urls.push(format!("/localimg/{enc}"));
+        match generate_manual_images(proj_dir.clone(), snapshot, log_lines.into(), preview).await {
+            Ok(outputs) => {
+                let mut p = proj.write();
+                p.output_paths = outputs;
+                save_project_state(&proj_dir, &p);
+                phase.set(AppPhase::Done);
             }
-            if !targets.desktop.is_empty() {
-                let _ = std::fs::remove_dir_all(targets.desktop_dir.join(locale));
-            }
-            let texts = locale_texts_map.get(locale).cloned().unwrap_or_default();
-            add_log(format!(
-                "─── Generating locale: {locale} ({total} image(s)) ───"
-            ));
-
-            for (idx, src) in srcs.iter().enumerate() {
-                let screen_num = idx + 1;
-                add_log(format!("[{locale}] Processing image {screen_num}/{total}…"));
-
-                // Clone everything the blocking thread needs.
-                let src2 = src.clone();
-                let locale2 = locale.clone();
-                let targets2 = targets.clone();
-                let play_locale = stores::play_language(locale).to_string();
-                let bg_color = if idx % 2 == 0 {
-                    primary_rgba
-                } else {
-                    secondary_rgba
-                };
-                let (title, subtitle) = texts.get(idx).cloned().unwrap_or_default();
-
-                // All CPU-heavy work (read, decode, composite, encode, resize) runs on
-                // a blocking thread so the async executor — and the UI — stay free.
-                let cpu = tokio::task::spawn_blocking(
-                    move || -> Result<(Vec<(String, PathBuf)>, Option<String>), String> {
-                        let (w, h): (u32, u32) = if desktop { (2560, 1600) } else { (1290, 2796) };
-                        let font = FontRef::try_from_slice(ROBOTO_FONT).expect("font");
-
-                        let screenshot_bytes = std::fs::read(&src2)
-                            .map_err(|e| format!("Failed to read image {screen_num}: {e}"))?;
-                        let screenshot = image::load_from_memory(&screenshot_bytes)
-                            .map_err(|e| format!("Failed to decode image {screen_num}: {e}"))?
-                            .to_rgba8();
-
-                        let mut img = RgbaImage::from_pixel(w, h, bg_color);
-                        let text_color = get_contrast_color(bg_color);
-                        // (title size, title y, subtitle size, subtitle y)
-                        let (ts, ty, ss, sy) = if desktop { (110.0, 90, 56.0, 230) } else { (120.0, 200, 60.0, 350) };
-                        if !title.is_empty() {
-                            draw_centered_text(&mut img, &font, &title, PxScale::from(ts), text_color, ty);
-                        }
-                        if !subtitle.is_empty() {
-                            draw_centered_text(&mut img, &font, &subtitle, PxScale::from(ss), text_color, sy);
-                        }
-
-                        if desktop {
-                            // Fit the whole window below the captions, keeping
-                            // its proportions — a desktop screenshot can be any shape.
-                            let (area_x, area_y) = (200u32, 360u32);
-                            let (area_w, area_h) = (w - 2 * area_x, h - area_y - 120);
-                            let scale = (area_w as f64 / screenshot.width() as f64)
-                                .min(area_h as f64 / screenshot.height() as f64);
-                            let fit_w = ((screenshot.width() as f64 * scale) as u32).max(1);
-                            let fit_h = ((screenshot.height() as f64 * scale) as u32).max(1);
-                            let resized = image::imageops::resize(&screenshot, fit_w, fit_h, FilterType::Lanczos3);
-                            image::imageops::overlay(
-                                &mut img,
-                                &resized,
-                                (area_x + (area_w - fit_w) / 2) as i64,
-                                (area_y + (area_h - fit_h) / 2) as i64,
-                            );
-                        } else {
-                            let phone_w = (w as f64 * 0.7) as u32;
-                            let phone_h = (phone_w as f64 * 2.16) as u32;
-                            let phone_x = (w - phone_w) / 2;
-                            let phone_y = h - phone_h - 150;
-                            let resized = image::imageops::resize(&screenshot, phone_w, phone_h, FilterType::Lanczos3);
-                            image::imageops::overlay(&mut img, &resized, phone_x as i64, phone_y as i64);
-                        }
-
-                        let composited_bytes = {
-                            let mut buf = std::io::Cursor::new(Vec::new());
-                            img.write_to(&mut buf, image::ImageFormat::Png)
-                                .map_err(|e| format!("Failed to encode image {screen_num}: {e}"))?;
-                            buf.into_inner()
-                        };
-
-                        let paths = resize_to_targets(
-                            &composited_bytes,
-                            screen_num,
-                            &locale2,
-                            &play_locale,
-                            &targets2,
-                        )
-                        .map_err(|e| {
-                            format!("Resize failed for [{locale2}] screen {screen_num}: {e}")
-                        })?;
-
-                        let preview =
-                            paths.iter().find(|(l, _)| l.contains("6.7")).or_else(|| paths.first()).map(|(_, p)| {
-                                urlencoding::encode(&p.to_string_lossy().to_string()).into_owned()
-                            });
-
-                        Ok((paths, preview))
-                    },
-                );
-
-                let (paths, preview) = match cpu.await {
-                    Ok(Ok(v)) => v,
-                    Ok(Err(e)) => {
-                        phase.set(AppPhase::Error(e));
-                        return;
-                    }
-                    Err(e) => {
-                        phase.set(AppPhase::Error(format!("Thread panic: {e}")));
-                        return;
-                    }
-                };
-
-                for (label, _) in &paths {
-                    add_log(format!("Saved: {label}"));
-                }
-                if let Some(enc) = preview {
-                    proj.write().generated_urls.push(format!("/localimg/{enc}"));
-                }
-                all_outputs.extend(paths);
-            }
+            Err(e) => phase.set(AppPhase::Error(e)),
         }
-
-        {
-            let mut p = proj.write();
-            p.output_paths = all_outputs;
-            save_project_state(&proj_dir, &p);
-        }
-        let loc_count = selected_locales.len();
-        add_log(format!(
-            "Done! Manual screenshots generated for {loc_count} locale(s)."
-        ));
-        phase.set(AppPhase::Done);
     });
+}
+
+/// Where a job's output lines go: the job drawer's log in the window, or a
+/// plain list when `mcp` runs the job for Claude, where there is no window.
+#[derive(Clone)]
+pub(crate) enum Log {
+    Window(Signal<Vec<String>>),
+    Lines(std::rc::Rc<std::cell::RefCell<Vec<String>>>),
+}
+
+impl Log {
+    pub(crate) fn push(&self, line: String) {
+        match self {
+            Log::Window(signal) => {
+                let mut signal = *signal;
+                signal.write().push(line);
+            }
+            Log::Lines(lines) => lines.borrow_mut().push(line),
+        }
+    }
+}
+
+impl From<Signal<Vec<String>>> for Log {
+    fn from(signal: Signal<Vec<String>>) -> Self {
+        Log::Window(signal)
+    }
 }
 
 /// bash for a developer's own build script: on Windows, Git for Windows'.
@@ -1230,8 +1257,9 @@ fn find_bash() -> Option<PathBuf> {
 pub(super) async fn stream_command(
     mut cmd: std::process::Command,
     name: &str,
-    mut log: Signal<Vec<String>>,
+    log: impl Into<Log>,
 ) -> Result<(), String> {
+    let log = log.into();
     use std::io::{BufRead, BufReader};
     use std::process::Stdio;
     use std::sync::mpsc;
@@ -1282,7 +1310,7 @@ pub(super) async fn stream_command(
                 Msg::Line(line) => {
                     let clean = strip_ansi(&line);
                     if !clean.trim().is_empty() {
-                        log.write().push(clean);
+                        log.push(clean);
                     }
                 }
                 Msg::Done(result) => return result,

@@ -330,8 +330,9 @@ fn command(program: &Path, dir: &Path, job: &Job, sdk: &Path, ndk: &Path) -> Com
 }
 
 /// Run the build, logging as it goes. Returns the file it produced.
-pub(super) async fn run(project: PathBuf, job: Job, mut log: Signal<Vec<String>>) -> Result<PathBuf, String> {
-    let mut say = move |s: String| log.write().push(s);
+pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -> Result<PathBuf, String> {
+    let log = log.into();
+    let mut say = |s: String| log.push(s);
     let sdk = sdk_home();
     let ndk = newest_version_dir(&sdk.join("ndk"))
         .ok_or_else(|| format!("Android NDK not found in {} — install it in Android Studio: SDK Manager → SDK Tools → NDK (Side by side).", sdk.join("ndk").display()))?;
@@ -379,14 +380,14 @@ pub(super) async fn run(project: PathBuf, job: Job, mut log: Signal<Vec<String>>
         Kind::Release => {
             dx_cmd.args(["bundle", "--platform", "android", "--release"]);
             say("📦 dx bundle --platform android --release".into());
-            if let Err(e) = jobs::stream_command(dx_cmd, "dx bundle", log).await {
+            if let Err(e) = jobs::stream_command(dx_cmd, "dx bundle", log.clone()).await {
                 say(format!("   ({e} — continuing, the Gradle project is fixed and rebuilt below)"));
             }
         }
         Kind::DebugApk => {
             dx_cmd.args(["build", "--platform", "android", "--release"]);
             say("📦 dx build --platform android --release".into());
-            jobs::stream_command(dx_cmd, "dx build", log).await?;
+            jobs::stream_command(dx_cmd, "dx build", log.clone()).await?;
         }
     }
     if !gradle_file.is_file() {
@@ -426,7 +427,7 @@ pub(super) async fn run(project: PathBuf, job: Job, mut log: Signal<Vec<String>>
         Kind::DebugApk => gradle_cmd.args(["clean", "assembleDebug"]),
     };
     say(format!("🏗️  Gradle {}", if job.kind == Kind::Release { "bundleRelease" } else { "assembleDebug" }));
-    jobs::stream_command(gradle_cmd, "Gradle", log).await?;
+    jobs::stream_command(gradle_cmd, "Gradle", log.clone()).await?;
 
     // 4. The result, next to the project's other bundles.
     match job.kind {

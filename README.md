@@ -116,6 +116,22 @@ The project logo is synced to `assets/icon.png` before each build.
 - On Android, images are picked through the Storage Access Framework and
   projects are kept in app-private storage.
 
+## Use from Claude (MCP)
+
+`shipscreen mcp` serves the projects to an MCP client over stdio, with no
+window (`src/workspace/mcp.rs`); the **MCP** button in a project's sidebar
+shows the Claude Desktop config and the Claude Code command. The tools:
+`list_projects`, `get_project`, `set_app`, `set_version`, `set_languages`,
+`set_screens`, `set_store_text`, `generate_screenshots` (the manual style) and
+`build`. They run the workspace's own code: `jobs::generate_manual_images`,
+`jobs::build` with `BuildInputs::problem` checked first, and the same seeding
+of a project's identity and numbers as opening it. Store uploads are not
+exposed.
+
+The server and the window share `shipscreen.json`: the server reads, changes
+and writes it in one go, and an open project reloads it when another process
+wrote it (checked every 2 s).
+
 ## Development
 
 ```bash

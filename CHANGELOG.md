@@ -15,6 +15,21 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- Use ShipScreen from Claude. The new **MCP** button at the bottom of a
+  project's sidebar shows what to paste into Claude Desktop, or the one line
+  to run for Claude Code, already pointing at where ShipScreen is installed.
+  Claude can then read everything about a project and what it still needs,
+  write and translate the store text (the stores' character limits are
+  enforced), add languages, add screenshots and caption them in every
+  language, set or bump the version and build numbers, generate the
+  screenshots and run the iOS, AAB and APK builds. What Claude changes shows
+  up in the open project within a couple of seconds. Uploading to the stores
+  stays in the Submit step.
+
 ## [0.1.27] - 2026-10-16
 
 ### Added

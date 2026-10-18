@@ -18,6 +18,18 @@ mod doctor;
 mod envfile;
 mod java;
 mod jobs;
+#[cfg(not(target_os = "android"))]
+pub(crate) mod mcp;
+#[cfg(target_os = "android")]
+mod mcp {
+    use dioxus::prelude::*;
+    /// Nothing to connect to on Android: Claude Desktop and Claude Code run on computers.
+    #[component]
+    pub(crate) fn McpPopup(on_close: EventHandler<()>) -> Element {
+        let _ = on_close;
+        rsx! {}
+    }
+}
 mod playkey;
 mod repo;
 mod shellenv;
@@ -776,6 +788,20 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
         proj.peek().locales.first().cloned().unwrap_or_else(|| "en-US".to_string())
     });
 
+    // What Claude changes through `shipscreen mcp` shows up here.
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            let project = dir.peek().clone();
+            if project_state_changed_elsewhere(&project) {
+                let (mut proj, mut refresh) = (proj, refresh);
+                proj.set(load_project_state(&project));
+                refresh.with_mut(|n| *n += 1);
+            }
+        }
+    });
+
+    let mut show_mcp = use_signal(|| false);
     let mut show_settings = use_signal(|| false);
     // Lock body scroll whenever the settings popup is open
     use_effect(move || {
@@ -936,11 +962,20 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
                         }
                         "Settings"
                     }
+                    button {
+                        class: "btn ws-settings-btn",
+                        title: "Use ShipScreen from Claude Desktop or Claude Code",
+                        onclick: move |_| show_mcp.toggle(),
+                        "MCP"
+                    }
                 }
             }
 
             if *show_settings.read() {
                 SettingsPopup { on_close: move |_| show_settings.set(false) }
+            }
+            if *show_mcp.read() {
+                mcp::McpPopup { on_close: move |_| show_mcp.set(false) }
             }
 
             // ---- Step screen ----
