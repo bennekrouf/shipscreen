@@ -15,6 +15,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- ShipScreen now links the Windows C runtime statically, ensuring it runs on any
+  PC without requiring the Visual C++ Redistributable. This makes the
+  application more portable and easier to distribute.
+
 ## [0.1.28] - 2026-10-18
 
 ### Added
