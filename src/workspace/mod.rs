@@ -968,6 +968,14 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
                         onclick: move |_| show_mcp.toggle(),
                         "MCP"
                     }
+                    // A link, not a button: the webview hands it to the browser.
+                    a {
+                        class: "btn ws-settings-btn",
+                        href: "{crate::feedback::contact_url()}",
+                        target: "_blank",
+                        title: "Ideas, bugs, questions: send them to the person who makes ShipScreen",
+                        "Feedback"
+                    }
                 }
             }
 

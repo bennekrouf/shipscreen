@@ -12,6 +12,7 @@ use imageproc::drawing::{draw_text_mut, text_size};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+mod feedback;
 mod licence;
 mod pro;
 mod telemetry;
@@ -2033,6 +2034,7 @@ fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
                     {open_existing_button(on_open.clone())}
                 }
                 pro::ProButton {}
+                feedback::FeedbackLine {}
 
                 // ── New Project wizard (inline) ──────────────────────────────
                 if *show_new.read() {
