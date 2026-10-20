@@ -15,6 +15,14 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- A Feedback button under Settings and MCP, and Feedback and mayorana.ch links
+  on the projects screen, open the contact form with ShipScreen and your
+  version already filled in, so an idea or a problem reaches us in two clicks.
+
 ## [0.1.29] - 2026-10-19
 
 ### Changed
