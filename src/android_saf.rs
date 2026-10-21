@@ -44,7 +44,9 @@ pub extern "system" fn Java_dev_dioxus_main_MainActivity_nativeOnActivityResult(
     result_code: jint,
     uri: JString,
 ) {
-    let Some(sender) = pending().lock().unwrap().remove(&request_code) else { return };
+    let Some(sender) = pending().lock().unwrap().remove(&request_code) else {
+        return;
+    };
     let value = if result_code != RESULT_OK || uri.as_raw().is_null() {
         None
     } else {
@@ -83,7 +85,11 @@ fn launch_picker(mime_type: &str, allow_multiple: bool) -> Option<jint> {
     let result: jni::errors::Result<()> = (|| {
         let action = env.new_string("android.intent.action.OPEN_DOCUMENT")?;
         let intent_class = env.find_class("android/content/Intent")?;
-        let intent = env.new_object(intent_class, "(Ljava/lang/String;)V", &[JValue::Object(&action)])?;
+        let intent = env.new_object(
+            intent_class,
+            "(Ljava/lang/String;)V",
+            &[JValue::Object(&action)],
+        )?;
 
         let mime = env.new_string(mime_type)?;
         env.call_method(
@@ -151,7 +157,12 @@ fn read_uri(uri_str: &str) -> Option<(String, Vec<u8>)> {
             .l()?;
 
         let mime = env
-            .call_method(&resolver, "getType", "(Landroid/net/Uri;)Ljava/lang/String;", &[JValue::Object(&uri)])?
+            .call_method(
+                &resolver,
+                "getType",
+                "(Landroid/net/Uri;)Ljava/lang/String;",
+                &[JValue::Object(&uri)],
+            )?
             .l()?;
         let ext = if mime.as_raw().is_null() {
             "png".to_string()
@@ -229,7 +240,9 @@ pub fn app_private_projects_root() -> PathBuf {
     ROOT.get_or_init(|| {
         let path: jni::errors::Result<String> = (|| {
             let (mut env, activity) = attach()?;
-            let files_dir = env.call_method(&activity, "getFilesDir", "()Ljava/io/File;", &[])?.l()?;
+            let files_dir = env
+                .call_method(&activity, "getFilesDir", "()Ljava/io/File;", &[])?
+                .l()?;
             let path_jstr = env
                 .call_method(&files_dir, "getAbsolutePath", "()Ljava/lang/String;", &[])?
                 .l()?;
@@ -238,8 +251,10 @@ pub fn app_private_projects_root() -> PathBuf {
 
         // getFilesDir() cannot realistically fail on a running app; this
         // fallback only matters if it somehow does.
-        let root = PathBuf::from(path.unwrap_or_else(|_| "/data/data/com.mayorana.appscreens/files".into()))
-            .join("projects");
+        let root = PathBuf::from(
+            path.unwrap_or_else(|_| "/data/data/com.mayorana.appscreens/files".into()),
+        )
+        .join("projects");
         let _ = std::fs::create_dir_all(&root);
         root
     })

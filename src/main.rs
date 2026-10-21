@@ -14,11 +14,11 @@ use std::path::PathBuf;
 
 mod feedback;
 mod licence;
+mod notice;
 mod pro;
 mod telemetry;
-mod update_check;
-mod notice;
 mod toolpath;
+mod update_check;
 mod workspace;
 
 use workspace::ProjectView;
@@ -65,9 +65,9 @@ const ANDROID_TARGETS: &[(&str, &str, u32, u32)] = &[
 
 // Desktop screenshot targets (used when platform_type == Desktop)
 const DESKTOP_TARGETS: &[(&str, &str, u32, u32)] = &[
-    ("desktop_mac",   "macOS (1280×800)",    1280,  800),
-    ("desktop_win",   "Windows (1280×720)",  1280,  720),
-    ("desktop_wide",  "Widescreen (1920×1080)", 1920, 1080),
+    ("desktop_mac", "macOS (1280×800)", 1280, 800),
+    ("desktop_win", "Windows (1280×720)", 1280, 720),
+    ("desktop_wide", "Widescreen (1920×1080)", 1920, 1080),
 ];
 
 // ---------------------------------------------------------------------------
@@ -83,11 +83,11 @@ struct Settings {
     recent_projects: Vec<PathBuf>,
     // Build / signing config (same developer across all projects)
     #[serde(default)]
-    apple_identity: String,   // "Apple Distribution: Name (TEAMID)"
+    apple_identity: String, // "Apple Distribution: Name (TEAMID)"
     #[serde(default)]
     provisioning_profile: String, // absolute path to .mobileprovision
     #[serde(default = "default_ios_short_version")]
-    ios_short_version: String,    // e.g. "1.0"
+    ios_short_version: String, // e.g. "1.0"
     // Signing material shared by every project (one developer, one team)
     /// Android upload keystore; its password lives in the Keychain
     #[serde(default)]
@@ -162,7 +162,9 @@ fn parse_dotenv(path: &PathBuf) -> std::collections::HashMap<String, String> {
     if let Ok(contents) = std::fs::read_to_string(path) {
         for line in contents.lines() {
             let line = line.trim();
-            if line.is_empty() || line.starts_with('#') { continue; }
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
             if let Some((k, v)) = line.split_once('=') {
                 let v = v.trim().trim_matches('"').trim_matches('\'');
                 map.insert(k.trim().to_string(), v.to_string());
@@ -230,10 +232,10 @@ enum PlatformType {
 impl PlatformType {
     fn label(&self) -> &'static str {
         match self {
-            PlatformType::Desktop     => "Desktop",
-            PlatformType::Ios         => "iOS",
-            PlatformType::Android     => "Android",
-            PlatformType::IosAndroid  => "iOS + Android",
+            PlatformType::Desktop => "Desktop",
+            PlatformType::Ios => "iOS",
+            PlatformType::Android => "Android",
+            PlatformType::IosAndroid => "iOS + Android",
         }
     }
     fn has_ios(&self) -> bool {
@@ -286,19 +288,19 @@ struct ProjectState {
     logo_path: Option<PathBuf>,
     // Build configuration (per-project)
     #[serde(default)]
-    app_name: String,      // Display name, e.g. "Abjad"
+    app_name: String, // Display name, e.g. "Abjad"
     #[serde(default)]
-    project_slug: String,  // Lowercase dx slug, e.g. "abjad"
+    project_slug: String, // Lowercase dx slug, e.g. "abjad"
     /// Legacy single bundle ID field — kept for deserialization of old JSON only.
     /// On load this is migrated into ios_bundle_id / android_bundle_id and then ignored.
     #[serde(default, skip_serializing)]
     bundle_id: String,
     #[serde(default)]
-    ios_bundle_id: String,     // iOS bundle ID, e.g. "com.mayorana.tafseel.mufrad"
+    ios_bundle_id: String, // iOS bundle ID, e.g. "com.mayorana.tafseel.mufrad"
     #[serde(default)]
     android_bundle_id: String, // Android package, e.g. "com.mayorana.mufrad"
     #[serde(default)]
-    platform_type: PlatformType,  // Target platform(s) for this project
+    platform_type: PlatformType, // Target platform(s) for this project
     // Export configuration
     #[serde(default = "default_true")]
     export_ios: bool,
@@ -388,15 +390,31 @@ struct ReleaseRecord {
     action: String,
 }
 
-fn default_play_track() -> String { "internal".to_string() }
-fn default_play_status() -> String { "draft".to_string() }
+fn default_play_track() -> String {
+    "internal".to_string()
+}
+fn default_play_status() -> String {
+    "draft".to_string()
+}
 
-fn default_true() -> bool { true }
-fn default_locale() -> String { "en-US".to_string() }
-fn default_locales() -> Vec<String> { vec!["en-US".to_string()] }
-fn default_ios_targets() -> Vec<bool> { vec![true; IOS_TARGETS.len()] }
-fn default_android_targets() -> Vec<bool> { vec![true; ANDROID_TARGETS.len()] }
-fn default_desktop_targets() -> Vec<bool> { vec![true; DESKTOP_TARGETS.len()] }
+fn default_true() -> bool {
+    true
+}
+fn default_locale() -> String {
+    "en-US".to_string()
+}
+fn default_locales() -> Vec<String> {
+    vec!["en-US".to_string()]
+}
+fn default_ios_targets() -> Vec<bool> {
+    vec![true; IOS_TARGETS.len()]
+}
+fn default_android_targets() -> Vec<bool> {
+    vec![true; ANDROID_TARGETS.len()]
+}
+fn default_desktop_targets() -> Vec<bool> {
+    vec![true; DESKTOP_TARGETS.len()]
+}
 
 impl ProjectState {
     fn with_defaults() -> Self {
@@ -419,11 +437,17 @@ impl ProjectState {
     /// Ensure ios_targets / android_targets / desktop_targets vecs are the right length.
     /// Also migrate legacy `manual_texts` + `locale` into `locale_texts` / `locales`.
     fn normalize_targets(&mut self) {
-        while self.ios_targets.len() < IOS_TARGETS.len() { self.ios_targets.push(true); }
+        while self.ios_targets.len() < IOS_TARGETS.len() {
+            self.ios_targets.push(true);
+        }
         self.ios_targets.truncate(IOS_TARGETS.len());
-        while self.android_targets.len() < ANDROID_TARGETS.len() { self.android_targets.push(true); }
+        while self.android_targets.len() < ANDROID_TARGETS.len() {
+            self.android_targets.push(true);
+        }
         self.android_targets.truncate(ANDROID_TARGETS.len());
-        while self.desktop_targets.len() < DESKTOP_TARGETS.len() { self.desktop_targets.push(true); }
+        while self.desktop_targets.len() < DESKTOP_TARGETS.len() {
+            self.desktop_targets.push(true);
+        }
         self.desktop_targets.truncate(DESKTOP_TARGETS.len());
     }
     /// Migrate old shared data into the per-locale maps.
@@ -440,19 +464,27 @@ impl ProjectState {
         // IMPORTANT: drain() clears source_paths so re-opening the project never
         // re-adds paths the user has already deleted from locale_sources.
         if !self.source_paths.is_empty() {
-            let entry = self.locale_sources
+            let entry = self
+                .locale_sources
                 .entry("en-US".to_string())
                 .or_insert_with(Vec::new);
             for p in self.source_paths.drain(..) {
-                if !entry.contains(&p) { entry.push(p); }
+                if !entry.contains(&p) {
+                    entry.push(p);
+                }
             }
             // source_paths is now empty — caller should persist this to disk.
         }
         // Migrate legacy shared manual_texts → en-US locale_texts
-        if self.locale_texts.get("en-US").map(|v| v.is_empty()).unwrap_or(true)
+        if self
+            .locale_texts
+            .get("en-US")
+            .map(|v| v.is_empty())
+            .unwrap_or(true)
             && !self.manual_texts.is_empty()
         {
-            self.locale_texts.insert("en-US".to_string(), self.manual_texts.clone());
+            self.locale_texts
+                .insert("en-US".to_string(), self.manual_texts.clone());
         }
         // Seed locale_texts / locale_sources entries for every listed locale
         for loc in self.locales.clone() {
@@ -485,8 +517,13 @@ impl ProjectState {
     }
     /// Ensure the text vec for `locale` has at least `n` entries.
     fn ensure_texts_len(&mut self, locale: &str, n: usize) {
-        let v = self.locale_texts.entry(locale.to_string()).or_insert_with(Vec::new);
-        while v.len() < n { v.push((String::new(), String::new())); }
+        let v = self
+            .locale_texts
+            .entry(locale.to_string())
+            .or_insert_with(Vec::new);
+        while v.len() < n {
+            v.push((String::new(), String::new()));
+        }
     }
 }
 
@@ -506,14 +543,18 @@ fn project_state_path(project_dir: &PathBuf) -> PathBuf {
 /// Each project's state file's modification time as this process last read or
 /// wrote it. Two processes write it — the window, and `shipscreen mcp` when
 /// Claude drives it — so a different time means the other one did.
-fn state_seen() -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>> {
-    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>>> =
-        std::sync::OnceLock::new();
+fn state_seen(
+) -> &'static std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>> {
+    static SEEN: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<PathBuf, Option<std::time::SystemTime>>>,
+    > = std::sync::OnceLock::new();
     SEEN.get_or_init(Default::default)
 }
 
 fn state_mtime(project_dir: &PathBuf) -> Option<std::time::SystemTime> {
-    std::fs::metadata(project_state_path(project_dir)).and_then(|m| m.modified()).ok()
+    std::fs::metadata(project_state_path(project_dir))
+        .and_then(|m| m.modified())
+        .ok()
 }
 
 fn note_state(project_dir: &PathBuf) {
@@ -526,7 +567,8 @@ fn note_state(project_dir: &PathBuf) {
 fn project_state_changed_elsewhere(project_dir: &PathBuf) -> bool {
     let now = state_mtime(project_dir);
     let mut seen = state_seen().lock().unwrap_or_else(|e| e.into_inner());
-    seen.insert(project_dir.clone(), now).is_some_and(|before| before != now)
+    seen.insert(project_dir.clone(), now)
+        .is_some_and(|before| before != now)
 }
 
 fn load_project_state(project_dir: &PathBuf) -> ProjectState {
@@ -553,7 +595,10 @@ fn save_project_state(project_dir: &PathBuf, state: &ProjectState) {
     match serde_json::to_string_pretty(state) {
         Ok(json) => {
             if let Err(e) = std::fs::write(project_state_path(project_dir), &json) {
-                eprintln!("[ShipScreen] ⚠️  Failed to save project state to {:?}: {e}", project_state_path(project_dir));
+                eprintln!(
+                    "[ShipScreen] ⚠️  Failed to save project state to {:?}: {e}",
+                    project_state_path(project_dir)
+                );
             }
             note_state(project_dir);
         }
@@ -583,7 +628,8 @@ fn script_ios_distribution(
     short_version: &str,
     build_number: u32,
 ) -> String {
-    format!(r##"#!/bin/bash
+    format!(
+        r##"#!/bin/bash
 
 # build_ios_distribution.sh - Consolidated Build Script for {app_name}
 # Handles building, validation fixes, signing (with Entitlements), and packaging.
@@ -877,7 +923,8 @@ echo "📂 IPA location: $OUTPUT_DIR/$APP_NAME.ipa"
 cp "$OUTPUT_DIR/$APP_NAME.ipa" "./$APP_NAME.ipa"
 echo "✅ IPA copied to project root: ./$APP_NAME.ipa"
 open -R "./$APP_NAME.ipa"
-"##)
+"##
+    )
 }
 
 fn script_android_release(
@@ -904,7 +951,8 @@ fn script_android_release(
         }
     };
     let old_package = format!("com.example.{title_case}");
-    format!(r##"#!/bin/bash
+    format!(
+        r##"#!/bin/bash
 
 # build_android_release.sh - Build Signed Android App Bundle (AAB) for Google Play
 set -e
@@ -1086,12 +1134,14 @@ else
     ls "$BUILD_DIR/app/build/outputs/bundle/release/" 2>/dev/null || echo "(directory does not exist)"
     exit 1
 fi
-"##)
+"##
+    )
 }
 
 /// Generate `build_android.sh` (release APK via Gradle assembleRelease)
 fn script_android(_app_name: &str, project_slug: &str, _bundle_id: &str) -> String {
-    format!(r##"#!/bin/bash
+    format!(
+        r##"#!/bin/bash
 
 # Exit on error
 set -e
@@ -1132,7 +1182,8 @@ cd -
 
 echo
 echo "✅ Build complete"
-"##)
+"##
+    )
 }
 
 /// Generate `build_apk.sh` (debug/installable APK)
@@ -1147,7 +1198,8 @@ fn script_build_apk(app_name: &str, project_slug: &str, bundle_id: &str) -> Stri
         }
     };
     let old_package = format!("com.example.{title_case}");
-    format!(r##"#!/bin/bash
+    format!(
+        r##"#!/bin/bash
 
 # build_apk.sh - Build Android APK (Debug/Installable) for {app_name}
 # Use this for local testing on a device/emulator
@@ -1251,7 +1303,8 @@ else
         open "$(pwd)"
     fi
 fi
-"##)
+"##
+    )
 }
 
 /// First lines of every script ShipScreen writes; how it knows which ones it may replace.
@@ -1281,11 +1334,25 @@ fn ensure_build_scripts(
     let scripts: &[(&str, String)] = &[
         (
             "build_ios_distribution.sh",
-            script_ios_distribution(app_name, project_slug, ios_bundle_id, identity, provisioning_profile, version, ios_build_number),
+            script_ios_distribution(
+                app_name,
+                project_slug,
+                ios_bundle_id,
+                identity,
+                provisioning_profile,
+                version,
+                ios_build_number,
+            ),
         ),
         (
             "build_android_release.sh",
-            script_android_release(app_name, project_slug, android_bundle_id, version, android_version_code),
+            script_android_release(
+                app_name,
+                project_slug,
+                android_bundle_id,
+                version,
+                android_version_code,
+            ),
         ),
         (
             "build_android.sh",
@@ -1301,7 +1368,9 @@ fn ensure_build_scripts(
     // the template doesn't have (a display name, a minimum iOS), so it's used
     // as-is, never replaced. Older ShipScreen scripts are recognised by name.
     let read = |name: &str| std::fs::read_to_string(project_dir.join(name)).ok();
-    let generated_here = scripts.iter().any(|(n, _)| read(n).is_some_and(|t| written_by_us(&t)));
+    let generated_here = scripts
+        .iter()
+        .any(|(n, _)| read(n).is_some_and(|t| written_by_us(&t)));
     let ours = |name: &str| match read(name) {
         None => true,
         Some(text) => {
@@ -1316,7 +1385,11 @@ fn ensure_build_scripts(
         if !ours(name) {
             continue;
         }
-        let content = content.replacen("#!/bin/bash\n", &format!("#!/bin/bash\n{SCRIPT_MARKER}\n"), 1);
+        let content = content.replacen(
+            "#!/bin/bash\n",
+            &format!("#!/bin/bash\n{SCRIPT_MARKER}\n"),
+            1,
+        );
         if std::fs::write(&path, content).is_ok() {
             // Make executable
             #[cfg(unix)]
@@ -1351,9 +1424,9 @@ fn scaffold_new_project(
 
     // ── Cargo.toml ────────────────────────────────────────────────────────────
     let features = match platform {
-        PlatformType::Desktop    => r#"["desktop"]"#,
-        PlatformType::Ios        => r#"["mobile"]"#,
-        PlatformType::Android    => r#"["mobile"]"#,
+        PlatformType::Desktop => r#"["desktop"]"#,
+        PlatformType::Ios => r#"["mobile"]"#,
+        PlatformType::Android => r#"["mobile"]"#,
         PlatformType::IosAndroid => r#"["mobile", "router"]"#,
     };
     let cargo_toml = format!(
@@ -1366,7 +1439,7 @@ fn scaffold_new_project(
     // ── Dioxus.toml ───────────────────────────────────────────────────────────
     let default_platform = match platform {
         PlatformType::Desktop => "desktop",
-        _                     => "mobile",
+        _ => "mobile",
     };
     let dioxus_toml = format!(
         "[application]\nname = \"{slug}\"\ndefault_platform = \"{default_platform}\"\n\n\
@@ -1520,7 +1593,11 @@ fn make_icon() -> Option<dioxus::desktop::tao::window::Icon> {
             // White phone-screens shape: two slightly-offset rounded rectangles
             // suggesting the App Store / Play Store dual export.
             let in_shape = is_screens_shape(x, y, SIZE);
-            let (r, g, b) = if in_shape { (255u8, 255u8, 255u8) } else { (r, g, b) };
+            let (r, g, b) = if in_shape {
+                (255u8, 255u8, 255u8)
+            } else {
+                (r, g, b)
+            };
 
             rgba.extend_from_slice(&[r, g, b, alpha]);
         }
@@ -1535,25 +1612,39 @@ fn is_screens_shape(x: u32, y: u32, size: u32) -> bool {
 
     // Front phone: rounded rect, slight tilt right
     let phone = |cx: f32, cy: f32, w: f32, h: f32, corner: f32| -> bool {
-        let left   = cx - w / 2.0;
-        let right  = cx + w / 2.0;
-        let top    = cy - h / 2.0;
+        let left = cx - w / 2.0;
+        let right = cx + w / 2.0;
+        let top = cy - h / 2.0;
         let bottom = cy + h / 2.0;
-        if fx < left || fx > right || fy < top || fy > bottom { return false; }
+        if fx < left || fx > right || fy < top || fy > bottom {
+            return false;
+        }
         // Round the corners
-        let dx = if fx < left + corner { left + corner - fx }
-                 else if fx > right - corner { fx - (right - corner) }
-                 else { 0.0 };
-        let dy = if fy < top + corner { top + corner - fy }
-                 else if fy > bottom - corner { fy - (bottom - corner) }
-                 else { 0.0 };
+        let dx = if fx < left + corner {
+            left + corner - fx
+        } else if fx > right - corner {
+            fx - (right - corner)
+        } else {
+            0.0
+        };
+        let dy = if fy < top + corner {
+            top + corner - fy
+        } else if fy > bottom - corner {
+            fy - (bottom - corner)
+        } else {
+            0.0
+        };
         dx * dx + dy * dy <= corner * corner
     };
 
     // Back phone (offset up-left)
-    if phone(s * 0.42, s * 0.45, s * 0.32, s * 0.48, s * 0.05) { return true; }
+    if phone(s * 0.42, s * 0.45, s * 0.32, s * 0.48, s * 0.05) {
+        return true;
+    }
     // Front phone (offset down-right)
-    if phone(s * 0.58, s * 0.55, s * 0.32, s * 0.48, s * 0.05) { return true; }
+    if phone(s * 0.58, s * 0.55, s * 0.32, s * 0.48, s * 0.05) {
+        return true;
+    }
     false
 }
 
@@ -1596,9 +1687,21 @@ macro_rules! icon {
     };
 }
 
-icon!(icon_sparkle, "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z");
-icon!(icon_image, "M4 4h16v16H4z", "M4 16l4.5-4.5 3 3 3.5-3.5L20 15");
-icon!(icon_upload, "M12 16V4", "M7 9l5-5 5 5", "M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3");
+icon!(
+    icon_sparkle,
+    "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"
+);
+icon!(
+    icon_image,
+    "M4 4h16v16H4z",
+    "M4 16l4.5-4.5 3 3 3.5-3.5L20 15"
+);
+icon!(
+    icon_upload,
+    "M12 16V4",
+    "M7 9l5-5 5 5",
+    "M4 16v3a2 2 0 002 2h12a2 2 0 002-2v-3"
+);
 icon!(icon_phone, "M6 2h12v20H6z", "M11 18.5h2");
 icon!(
     icon_package,
@@ -1606,7 +1709,12 @@ icon!(
     "M3.3 7l8.7 5 8.7-5",
     "M12 22V12",
 );
-icon!(icon_download, "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4", "M7 10l5 5 5-5", "M12 15V3");
+icon!(
+    icon_download,
+    "M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4",
+    "M7 10l5 5 5-5",
+    "M12 15V3"
+);
 icon!(icon_play, "M6 3l14 9-14 9z");
 icon!(icon_monitor, "M3 4h18v12H3z", "M8 20h8", "M12 16v4");
 icon!(
@@ -1620,9 +1728,28 @@ icon!(icon_plus, "M12 5v14", "M5 12h14");
 icon!(icon_chevron_left, "M15 5l-7 7 7 7");
 icon!(icon_chevron_right, "M9 5l7 7-7 7");
 icon!(icon_check, "M20 6L9 17l-5-5");
-icon!(icon_sun, "M12 4V2", "M12 22v-2", "M4 12H2", "M22 12h-2", "M5.6 5.6L4.2 4.2", "M19.8 19.8l-1.4-1.4", "M18.4 5.6l1.4-1.4", "M4.2 19.8l1.4-1.4", "M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z");
-icon!(icon_moon, "M20.5 13.3A8.5 8.5 0 1110.7 3.5a6.6 6.6 0 009.8 9.8z");
-icon!(icon_folder_plus, "M21 19a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h4.5l2 3H19a2 2 0 012 2z", "M12 11.5v5", "M9.5 14h5");
+icon!(
+    icon_sun,
+    "M12 4V2",
+    "M12 22v-2",
+    "M4 12H2",
+    "M22 12h-2",
+    "M5.6 5.6L4.2 4.2",
+    "M19.8 19.8l-1.4-1.4",
+    "M18.4 5.6l1.4-1.4",
+    "M4.2 19.8l1.4-1.4",
+    "M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z"
+);
+icon!(
+    icon_moon,
+    "M20.5 13.3A8.5 8.5 0 1110.7 3.5a6.6 6.6 0 009.8 9.8z"
+);
+icon!(
+    icon_folder_plus,
+    "M21 19a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h4.5l2 3H19a2 2 0 012 2z",
+    "M12 11.5v5",
+    "M9.5 14h5"
+);
 
 #[component]
 fn App() -> Element {
@@ -1635,6 +1762,14 @@ fn App() -> Element {
         open: Signal::new(false),
         status: Signal::new(licence::current()),
         pending: Signal::new(None),
+    });
+    // The licence is checked with api0 at start, then once a day.
+    use_future(move || async move {
+        pro.status.set(licence::refresh(true).await);
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            pro.status.set(licence::refresh(false).await);
+        }
     });
 
     // Active project dir (None = show project picker)
@@ -1654,26 +1789,30 @@ fn App() -> Element {
     // ── Theme (matches ais-runner) ────────────────────────────────────────
     // Initialise from system, then keep in sync — but stop syncing once the
     // user manually toggles via the button.
-    let mut is_light          = use_signal(system_prefers_light);
-    let mut theme_overridden  = use_signal(|| false);
+    let mut is_light = use_signal(system_prefers_light);
+    let mut theme_overridden = use_signal(|| false);
 
     use_effect(move || {
         let cls = if *is_light.read() { "light" } else { "" };
         document::eval(&format!("document.body.className = '{}';", cls));
     });
 
-    use_coroutine(move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
-            if *theme_overridden.read() { continue; }
-            let light = tokio::task::spawn_blocking(system_prefers_light)
-                .await
-                .unwrap_or(*is_light.read());
-            if light != *is_light.read() {
-                is_light.set(light);
+    use_coroutine(
+        move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                if *theme_overridden.read() {
+                    continue;
+                }
+                let light = tokio::task::spawn_blocking(system_prefers_light)
+                    .await
+                    .unwrap_or(*is_light.read());
+                if light != *is_light.read() {
+                    is_light.set(light);
+                }
             }
-        }
-    });
+        },
+    );
 
     // ── Auto-update check ──────────────────────────────────────────────────
     // Background fetch latest.json from GitHub releases on startup; if a newer
@@ -1682,26 +1821,30 @@ fn App() -> Element {
     // A message to the people running this build (see notice.rs). Same
     // posture as the update check: delayed, best-effort, silent on failure.
     let mut mayorana_notice = use_signal(|| Option::<notice::Notice>::None);
-    use_coroutine(move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
-        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
-        if let Some(n) = notice::fetch().await {
-            mayorana_notice.set(Some(n));
-        }
-    });
+    use_coroutine(
+        move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+            if let Some(n) = notice::fetch().await {
+                mayorana_notice.set(Some(n));
+            }
+        },
+    );
 
-    let mut update_info       = use_signal(|| Option::<update_check::UpdateInfo>::None);
-    let mut update_dismissed  = use_signal(|| false);
+    let mut update_info = use_signal(|| Option::<update_check::UpdateInfo>::None);
+    let mut update_dismissed = use_signal(|| false);
 
-    use_coroutine(move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
-        // Small delay so we don't compete with the app's own boot work.
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        if let Some(info) = update_check::check().await {
-            telemetry::record(telemetry::Event::UpdateOffered {
-                to: info.latest_version.clone(),
-            });
-            update_info.set(Some(info));
-        }
-    });
+    use_coroutine(
+        move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
+            // Small delay so we don't compete with the app's own boot work.
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            if let Some(info) = update_check::check().await {
+                telemetry::record(telemetry::Event::UpdateOffered {
+                    to: info.latest_version.clone(),
+                });
+                update_info.set(Some(info));
+            }
+        },
+    );
 
     // Asset handler for local images (thumbnails)
     use_asset_handler("localimg", |request, responder: RequestAsyncResponder| {
@@ -1750,12 +1893,14 @@ fn App() -> Element {
     // opt-outs (including a shell profile's), records the launch, and says
     // whether the notice is still owed. See telemetry.rs.
     let mut ask_consent = use_signal(|| false);
-    use_coroutine(move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
-        if telemetry::start().await {
-            ask_consent.set(true);
-        }
-        telemetry::flush_forever().await;
-    });
+    use_coroutine(
+        move |_rx: dioxus::prelude::UnboundedReceiver<()>| async move {
+            if telemetry::start().await {
+                ask_consent.set(true);
+            }
+            telemetry::flush_forever().await;
+        },
+    );
     // Recorded while the notice is on screen, so collection starts from the
     // next event — never from one the person had no chance to read about.
     use_effect(move || {
@@ -1972,9 +2117,9 @@ fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
 
     // "New Project" wizard state
     let mut show_new = use_signal(|| false);
-    let mut new_name     = use_signal(|| String::new());
-    let mut new_slug     = use_signal(|| String::new());
-    let mut new_bundle   = use_signal(|| String::new());
+    let mut new_name = use_signal(|| String::new());
+    let mut new_slug = use_signal(|| String::new());
+    let mut new_bundle = use_signal(|| String::new());
     let mut new_platform = use_signal(|| PlatformType::IosAndroid);
     // Desktop: nothing until the user picks a folder. Android: there's no
     // per-project folder choice at all (see src/android_saf.rs) — every
@@ -1989,11 +2134,21 @@ fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
     // Derive slug and bundle from name automatically (user can override)
     let auto_slug = {
         let n = new_name.read().to_lowercase();
-        n.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect::<String>()
+        n.chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_')
+            .collect::<String>()
     };
     let auto_bundle = {
-        let s = if new_slug.read().is_empty() { auto_slug.clone() } else { new_slug.read().clone() };
-        if s.is_empty() { "com.company.app".to_string() } else { format!("com.mayorana.{s}") }
+        let s = if new_slug.read().is_empty() {
+            auto_slug.clone()
+        } else {
+            new_slug.read().clone()
+        };
+        if s.is_empty() {
+            "com.company.app".to_string()
+        } else {
+            format!("com.mayorana.{s}")
+        }
     };
 
     rsx! {
@@ -2544,9 +2699,21 @@ impl ExportTargets {
             ios_dir: fastlane.join("screenshots").join("ios"),
             android_root: fastlane.join("metadata").join("android"),
             desktop_dir: fastlane.join("screenshots").join("desktop"),
-            ios: if p.export_ios { p.ios_targets.clone() } else { vec![] },
-            android: if p.export_android { p.android_targets.clone() } else { vec![] },
-            desktop: if p.platform_type.has_desktop() { p.desktop_targets.clone() } else { vec![] },
+            ios: if p.export_ios {
+                p.ios_targets.clone()
+            } else {
+                vec![]
+            },
+            android: if p.export_android {
+                p.android_targets.clone()
+            } else {
+                vec![]
+            },
+            desktop: if p.platform_type.has_desktop() {
+                p.desktop_targets.clone()
+            } else {
+                vec![]
+            },
         }
     }
 }
@@ -2572,7 +2739,9 @@ fn resize_to_targets(
     let mut results = Vec::new();
 
     for (ti, &(_, device_name, tw, th)) in IOS_TARGETS.iter().enumerate() {
-        if !targets.ios.get(ti).copied().unwrap_or(false) { continue; }
+        if !targets.ios.get(ti).copied().unwrap_or(false) {
+            continue;
+        }
         let resized = fill_and_crop(&img, tw, th);
         let locale_dir = targets.ios_dir.join(locale);
         std::fs::create_dir_all(&locale_dir)
@@ -2591,11 +2760,15 @@ fn resize_to_targets(
 
     let images_dir = targets.android_root.join(play_locale).join("images");
     for (ti, &(key, label, tw, th)) in ANDROID_TARGETS.iter().enumerate() {
-        if !targets.android.get(ti).copied().unwrap_or(false) { continue; }
+        if !targets.android.get(ti).copied().unwrap_or(false) {
+            continue;
+        }
         let path = match key {
             "android_feature" if screen_index == 1 => images_dir.join("featureGraphic.png"),
             "android_feature" => continue,
-            _ => images_dir.join("phoneScreenshots").join(format!("{screen_index:02}.png")),
+            _ => images_dir
+                .join("phoneScreenshots")
+                .join(format!("{screen_index:02}.png")),
         };
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)
@@ -2608,7 +2781,9 @@ fn resize_to_targets(
     }
 
     for (ti, &(key, name, tw, th)) in DESKTOP_TARGETS.iter().enumerate() {
-        if !targets.desktop.get(ti).copied().unwrap_or(false) { continue; }
+        if !targets.desktop.get(ti).copied().unwrap_or(false) {
+            continue;
+        }
         let locale_dir = targets.desktop_dir.join(locale);
         std::fs::create_dir_all(&locale_dir)
             .map_err(|e| format!("Failed to create {}: {e}", locale_dir.display()))?;
@@ -2699,7 +2874,6 @@ fn draw_centered_text(
     );
 }
 
-
 // ---------------------------------------------------------------------------
 // Strip ANSI escape codes from terminal output for clean log display
 // ---------------------------------------------------------------------------
@@ -2713,7 +2887,9 @@ fn strip_ansi(s: &str) -> String {
             if chars.peek() == Some(&'[') {
                 chars.next(); // consume '['
                 for nc in chars.by_ref() {
-                    if ('\x40'..='\x7e').contains(&nc) { break; }
+                    if ('\x40'..='\x7e').contains(&nc) {
+                        break;
+                    }
                 }
             } else {
                 // Non-CSI escape: consume one more char
@@ -2731,7 +2907,10 @@ fn strip_ansi(s: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Mint a short-lived JWT and exchange it for a Google OAuth2 access token.
-async fn google_play_access_token(client_email: &str, private_key_pem: &str) -> Result<String, String> {
+async fn google_play_access_token(
+    client_email: &str,
+    private_key_pem: &str,
+) -> Result<String, String> {
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 
     #[derive(serde::Serialize)]
@@ -2797,19 +2976,21 @@ async fn google_play_create_edit(token: &str, package_name: &str) -> Result<Stri
     let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
         // Surface the activation URL when the API is disabled in the GCP project.
-        let activation_url = body["error"]["details"]
-            .as_array()
-            .and_then(|details| {
-                details.iter().find_map(|d| d["metadata"]["activationUrl"].as_str())
-            });
+        let activation_url = body["error"]["details"].as_array().and_then(|details| {
+            details
+                .iter()
+                .find_map(|d| d["metadata"]["activationUrl"].as_str())
+        });
         if let Some(url) = activation_url {
             return Err(format!(
                 "Google Play Android Developer API is disabled.\n\
                 Enable it here, wait ~1 min, then retry:\n{url}"
             ));
         }
-        let message = body["error"]["message"].as_str()
-            .unwrap_or("unknown error").to_string();
+        let message = body["error"]["message"]
+            .as_str()
+            .unwrap_or("unknown error")
+            .to_string();
         // 404 "Package not found" means the app hasn't been created in Play Console yet.
         if status.as_u16() == 404 && message.contains("Package not found") {
             return Err(format!(
@@ -2888,7 +3069,11 @@ async fn google_play_upload_image(
 }
 
 /// Commit an edit to make it live.
-async fn google_play_commit_edit(token: &str, package_name: &str, edit_id: &str) -> Result<(), String> {
+async fn google_play_commit_edit(
+    token: &str,
+    package_name: &str,
+    edit_id: &str,
+) -> Result<(), String> {
     let url = format!(
         "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package_name}/edits/{edit_id}:commit"
     );
@@ -2910,7 +3095,11 @@ async fn google_play_commit_edit(token: &str, package_name: &str, edit_id: &str)
 }
 
 /// Silently delete (abort) an edit — used for cleanup on error.
-async fn google_play_delete_edit(token: &str, package_name: &str, edit_id: &str) -> Result<(), String> {
+async fn google_play_delete_edit(
+    token: &str,
+    package_name: &str,
+    edit_id: &str,
+) -> Result<(), String> {
     let url = format!(
         "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package_name}/edits/{edit_id}"
     );
@@ -2956,8 +3145,8 @@ fn asc_mint_jwt(key_id: &str, issuer_id: &str, p8_pem: &str) -> Result<String, S
     let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(key_id.to_string());
 
-    let key = EncodingKey::from_ec_pem(p8_pem.as_bytes())
-        .map_err(|e| format!("Invalid .p8 key: {e}"))?;
+    let key =
+        EncodingKey::from_ec_pem(p8_pem.as_bytes()).map_err(|e| format!("Invalid .p8 key: {e}"))?;
 
     encode(&header, &claims, &key).map_err(|e| format!("JWT encode error: {e}"))
 }
@@ -2970,15 +3159,20 @@ async fn asc_find_app(jwt: &str, bundle_id: &str) -> Result<String, String> {
     let resp: serde_json::Value = reqwest::Client::new()
         .get(&url)
         .bearer_auth(jwt)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Some(err) = resp["errors"].as_array().and_then(|e| e.first()) {
         let title = err["title"].as_str().unwrap_or("App Store Connect error");
         let detail = err["detail"].as_str().unwrap_or("");
         return Err(format!("{title}: {detail}"));
     }
-    resp["data"].as_array()
+    resp["data"]
+        .as_array()
         .and_then(|arr| arr.first())
         .and_then(|app| app["id"].as_str())
         .map(|s| s.to_string())
@@ -2992,14 +3186,22 @@ async fn asc_find_app(jwt: &str, bundle_id: &str) -> Result<String, String> {
 ///   2. Prefer an editable state; fall back to any existing version.
 ///   3. Only attempt POST when the list is truly empty. If POST returns
 ///      "duplicate" or "invalid state" errors, do a second wider GET and use whatever comes back.
-async fn asc_find_or_create_version(jwt: &str, app_id: &str, version_string: &str) -> Result<String, String> {
+async fn asc_find_or_create_version(
+    jwt: &str,
+    app_id: &str,
+    version_string: &str,
+) -> Result<String, String> {
     // ── Step 1: fetch all versions (no platform filter, no field pruning) ──────
     if let Some(id) = asc_fetch_any_version(jwt, app_id).await? {
         return Ok(id);
     }
 
     // ── Step 2: truly no version found — try to create one ────────────────────
-    let version_string = if version_string.is_empty() { "1.0" } else { version_string };
+    let version_string = if version_string.is_empty() {
+        "1.0"
+    } else {
+        version_string
+    };
     tracing::info!("No iOS version found; creating v{version_string} via ASC API");
     let body = serde_json::json!({
         "data": {
@@ -3019,7 +3221,9 @@ async fn asc_find_or_create_version(jwt: &str, app_id: &str, version_string: &st
         .post("https://api.appstoreconnect.apple.com/v1/appStoreVersions")
         .bearer_auth(jwt)
         .json(&body)
-        .send().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let create_resp: serde_json::Value = http_resp.json().await.map_err(|e| e.to_string())?;
 
     // Happy path: POST succeeded and returned the new version.
@@ -3031,14 +3235,12 @@ async fn asc_find_or_create_version(jwt: &str, app_id: &str, version_string: &st
     // is in an incompatible state, fall back to a second wider GET.
     let error_codes: Vec<&str> = create_resp["errors"]
         .as_array()
-        .map(|arr| arr.iter()
-            .filter_map(|e| e["code"].as_str())
-            .collect())
+        .map(|arr| arr.iter().filter_map(|e| e["code"].as_str()).collect())
         .unwrap_or_default();
 
-    let already_exists = error_codes.iter().any(|c| {
-        c.contains("DUPLICATE") || c.contains("INVALID")
-    });
+    let already_exists = error_codes
+        .iter()
+        .any(|c| c.contains("DUPLICATE") || c.contains("INVALID"));
 
     if already_exists {
         // The version exists but wasn't returned by our first GET.
@@ -3062,10 +3264,17 @@ async fn asc_fetch_any_version(jwt: &str, app_id: &str) -> Result<Option<String>
     let resp: serde_json::Value = reqwest::Client::new()
         .get(&url)
         .bearer_auth(jwt)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let versions = resp["data"].as_array().map(|a| a.clone()).unwrap_or_default();
+    let versions = resp["data"]
+        .as_array()
+        .map(|a| a.clone())
+        .unwrap_or_default();
 
     let editable_states = [
         "PREPARE_FOR_SUBMISSION",
@@ -3089,11 +3298,17 @@ async fn asc_fetch_any_version(jwt: &str, app_id: &str) -> Result<Option<String>
     }
 
     // Fall back to any version.
-    Ok(versions.first().and_then(|v| v["id"].as_str()).map(|s| s.to_string()))
+    Ok(versions
+        .first()
+        .and_then(|v| v["id"].as_str())
+        .map(|s| s.to_string()))
 }
 
 /// Return a map of locale → localization ID for a given version.
-async fn asc_get_localizations(jwt: &str, version_id: &str) -> Result<std::collections::HashMap<String, String>, String> {
+async fn asc_get_localizations(
+    jwt: &str,
+    version_id: &str,
+) -> Result<std::collections::HashMap<String, String>, String> {
     let url = format!(
         "https://api.appstoreconnect.apple.com/v1/appStoreVersions/{version_id}/appStoreVersionLocalizations\
          ?fields[appStoreVersionLocalizations]=locale\
@@ -3102,16 +3317,19 @@ async fn asc_get_localizations(jwt: &str, version_id: &str) -> Result<std::colle
     let resp: serde_json::Value = reqwest::Client::new()
         .get(&url)
         .bearer_auth(jwt)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
     let mut map = std::collections::HashMap::new();
     if let Some(arr) = resp["data"].as_array() {
         for item in arr {
-            if let (Some(id), Some(locale)) = (
-                item["id"].as_str(),
-                item["attributes"]["locale"].as_str(),
-            ) {
+            if let (Some(id), Some(locale)) =
+                (item["id"].as_str(), item["attributes"]["locale"].as_str())
+            {
                 map.insert(locale.to_string(), id.to_string());
             }
         }
@@ -3121,7 +3339,11 @@ async fn asc_get_localizations(jwt: &str, version_id: &str) -> Result<std::colle
 
 /// PATCH an appStoreVersionLocalization to set the app name.
 /// ASC requires `name` to be non-empty for the version to pass review.
-async fn asc_set_localization_name(jwt: &str, localization_id: &str, name: &str) -> Result<(), String> {
+async fn asc_set_localization_name(
+    jwt: &str,
+    localization_id: &str,
+    name: &str,
+) -> Result<(), String> {
     let body = serde_json::json!({
         "data": {
             "type": "appStoreVersionLocalizations",
@@ -3163,8 +3385,12 @@ async fn asc_get_or_create_screenshot_set(
     let resp: serde_json::Value = reqwest::Client::new()
         .get(&list_url)
         .bearer_auth(jwt)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Some(arr) = resp["data"].as_array() {
         for set in arr {
@@ -3192,10 +3418,15 @@ async fn asc_get_or_create_screenshot_set(
         .post("https://api.appstoreconnect.apple.com/v1/appScreenshotSets")
         .bearer_auth(jwt)
         .json(&body)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    create_resp["data"]["id"].as_str()
+    create_resp["data"]["id"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| format!("Failed to create screenshot set: {create_resp}"))
 }
@@ -3210,17 +3441,23 @@ async fn asc_delete_all_screenshots_in_set(jwt: &str, set_id: &str) -> Result<()
     let resp: serde_json::Value = reqwest::Client::new()
         .get(&list_url)
         .bearer_auth(jwt)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Some(arr) = resp["data"].as_array() {
         for screenshot in arr {
             if let Some(id) = screenshot["id"].as_str() {
-                let del_url = format!("https://api.appstoreconnect.apple.com/v1/appScreenshots/{id}");
+                let del_url =
+                    format!("https://api.appstoreconnect.apple.com/v1/appScreenshots/{id}");
                 let _ = reqwest::Client::new()
                     .delete(&del_url)
                     .bearer_auth(jwt)
-                    .send().await;
+                    .send()
+                    .await;
             }
         }
     }
@@ -3232,7 +3469,8 @@ async fn asc_delete_all_screenshots_in_set(jwt: &str, set_id: &str) -> Result<()
 async fn asc_upload_screenshot(jwt: &str, set_id: &str, path: &PathBuf) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Read file: {e}"))?;
     let file_size = bytes.len() as u64;
-    let file_name = path.file_name()
+    let file_name = path
+        .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("screenshot.png")
         .to_string();
@@ -3256,10 +3494,15 @@ async fn asc_upload_screenshot(jwt: &str, set_id: &str, path: &PathBuf) -> Resul
         .post("https://api.appstoreconnect.apple.com/v1/appScreenshots")
         .bearer_auth(jwt)
         .json(&reserve_body)
-        .send().await.map_err(|e| e.to_string())?
-        .json().await.map_err(|e| e.to_string())?;
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let screenshot_id = reserve_resp["data"]["id"].as_str()
+    let screenshot_id = reserve_resp["data"]["id"]
+        .as_str()
         .ok_or_else(|| format!("No screenshot ID in reserve response: {reserve_resp}"))?
         .to_string();
 
@@ -3270,12 +3513,16 @@ async fn asc_upload_screenshot(jwt: &str, set_id: &str, path: &PathBuf) -> Resul
 
     let client = reqwest::Client::new();
     for op in upload_ops {
-        let url = op["url"].as_str()
+        let url = op["url"]
+            .as_str()
             .ok_or_else(|| "Upload operation missing url".to_string())?;
         let offset = op["offset"].as_u64().unwrap_or(0) as usize;
         let length = op["length"].as_u64().unwrap_or(file_size) as usize;
-        let chunk = bytes.get(offset..offset + length)
-            .ok_or_else(|| format!("Chunk out of range: offset={offset} length={length} file_size={file_size}"))?
+        let chunk = bytes
+            .get(offset..offset + length)
+            .ok_or_else(|| {
+                format!("Chunk out of range: offset={offset} length={length} file_size={file_size}")
+            })?
             .to_vec();
 
         // Build request with any required headers from the operation.
@@ -3287,7 +3534,10 @@ async fn asc_upload_screenshot(jwt: &str, set_id: &str, path: &PathBuf) -> Resul
                 }
             }
         }
-        let put_resp = req.send().await.map_err(|e| format!("Upload PUT failed: {e}"))?;
+        let put_resp = req
+            .send()
+            .await
+            .map_err(|e| format!("Upload PUT failed: {e}"))?;
         if !put_resp.status().is_success() {
             return Err(format!("Upload PUT returned HTTP {}", put_resp.status()));
         }
@@ -3301,12 +3551,15 @@ async fn asc_upload_screenshot(jwt: &str, set_id: &str, path: &PathBuf) -> Resul
             "attributes": { "uploaded": true }
         }
     });
-    let commit_url = format!("https://api.appstoreconnect.apple.com/v1/appScreenshots/{screenshot_id}");
+    let commit_url =
+        format!("https://api.appstoreconnect.apple.com/v1/appScreenshots/{screenshot_id}");
     let commit_resp = reqwest::Client::new()
         .patch(&commit_url)
         .bearer_auth(jwt)
         .json(&commit_body)
-        .send().await.map_err(|e| format!("Commit PATCH failed: {e}"))?;
+        .send()
+        .await
+        .map_err(|e| format!("Commit PATCH failed: {e}"))?;
 
     if !commit_resp.status().is_success() {
         let body = commit_resp.text().await.unwrap_or_default();

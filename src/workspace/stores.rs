@@ -6,7 +6,8 @@ use super::*;
 
 const ASC: &str = "https://api.appstoreconnect.apple.com/v1";
 const PLAY: &str = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
-const PLAY_UPLOAD: &str = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications";
+const PLAY_UPLOAD: &str =
+    "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications";
 
 /// Readable error from an App Store Connect or Google API error body.
 fn api_error(status: reqwest::StatusCode, body: &serde_json::Value) -> String {
@@ -44,11 +45,18 @@ async fn send_json(req: reqwest::RequestBuilder) -> Result<serde_json::Value, St
 
 /// Store text for one App Store version localization. Empty fields are left
 /// out rather than clearing what is already in App Store Connect.
-pub(super) fn asc_localization_attributes(text: &StoreText, support_url: &str, with_whats_new: bool) -> serde_json::Value {
+pub(super) fn asc_localization_attributes(
+    text: &StoreText,
+    support_url: &str,
+    with_whats_new: bool,
+) -> serde_json::Value {
     let mut attrs = serde_json::Map::new();
     let mut put = |key: &str, value: &str| {
         if !value.trim().is_empty() {
-            attrs.insert(key.to_string(), serde_json::Value::String(value.trim().to_string()));
+            attrs.insert(
+                key.to_string(),
+                serde_json::Value::String(value.trim().to_string()),
+            );
         }
     };
     put("description", &text.description);
@@ -61,14 +69,22 @@ pub(super) fn asc_localization_attributes(text: &StoreText, support_url: &str, w
     serde_json::Value::Object(attrs)
 }
 
-pub(super) async fn asc_update_localization(jwt: &str, localization_id: &str, attributes: serde_json::Value) -> Result<(), String> {
+pub(super) async fn asc_update_localization(
+    jwt: &str,
+    localization_id: &str,
+    attributes: serde_json::Value,
+) -> Result<(), String> {
     let body = serde_json::json!({
         "data": { "type": "appStoreVersionLocalizations", "id": localization_id, "attributes": attributes }
     });
-    send_json(reqwest::Client::new()
-        .patch(format!("{ASC}/appStoreVersionLocalizations/{localization_id}"))
-        .bearer_auth(jwt)
-        .json(&body))
+    send_json(
+        reqwest::Client::new()
+            .patch(format!(
+                "{ASC}/appStoreVersionLocalizations/{localization_id}"
+            ))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
     .await
     .map(|_| ())
 }
@@ -90,12 +106,17 @@ pub(super) async fn asc_create_localization(
             }
         }
     });
-    let resp = send_json(reqwest::Client::new()
-        .post(format!("{ASC}/appStoreVersionLocalizations"))
-        .bearer_auth(jwt)
-        .json(&body))
+    let resp = send_json(
+        reqwest::Client::new()
+            .post(format!("{ASC}/appStoreVersionLocalizations"))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
     .await?;
-    resp["data"]["id"].as_str().map(str::to_string).ok_or_else(|| format!("No localization id in {resp}"))
+    resp["data"]["id"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| format!("No localization id in {resp}"))
 }
 
 #[derive(Clone, Debug)]
@@ -109,23 +130,39 @@ pub(super) struct AscBuild {
 
 /// The build with this version and build number, if App Store Connect has
 /// received it yet.
-pub(super) async fn asc_find_build(jwt: &str, app_id: &str, version: &str, build: u32) -> Result<Option<AscBuild>, String> {
-    let resp = send_json(reqwest::Client::new()
-        .get(format!("{ASC}/builds"))
-        .query(&[
-            ("filter[app]", app_id),
-            ("filter[version]", &build.to_string()),
-            ("filter[preReleaseVersion.version]", version),
-            ("fields[builds]", "version,processingState,usesNonExemptEncryption"),
-            ("limit", "1"),
-        ])
-        .bearer_auth(jwt))
+pub(super) async fn asc_find_build(
+    jwt: &str,
+    app_id: &str,
+    version: &str,
+    build: u32,
+) -> Result<Option<AscBuild>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{ASC}/builds"))
+            .query(&[
+                ("filter[app]", app_id),
+                ("filter[version]", &build.to_string()),
+                ("filter[preReleaseVersion.version]", version),
+                (
+                    "fields[builds]",
+                    "version,processingState,usesNonExemptEncryption",
+                ),
+                ("limit", "1"),
+            ])
+            .bearer_auth(jwt),
+    )
     .await?;
-    Ok(resp["data"].as_array().and_then(|a| a.first()).map(|b| AscBuild {
-        id: b["id"].as_str().unwrap_or_default().to_string(),
-        state: b["attributes"]["processingState"].as_str().unwrap_or("PROCESSING").to_string(),
-        uses_non_exempt_encryption: b["attributes"]["usesNonExemptEncryption"].as_bool(),
-    }))
+    Ok(resp["data"]
+        .as_array()
+        .and_then(|a| a.first())
+        .map(|b| AscBuild {
+            id: b["id"].as_str().unwrap_or_default().to_string(),
+            state: b["attributes"]["processingState"]
+                .as_str()
+                .unwrap_or("PROCESSING")
+                .to_string(),
+            uses_non_exempt_encryption: b["attributes"]["usesNonExemptEncryption"].as_bool(),
+        }))
 }
 
 /// Answer export compliance for a build: no non-exempt encryption.
@@ -133,31 +170,58 @@ pub(super) async fn asc_set_exempt_encryption(jwt: &str, build_id: &str) -> Resu
     let body = serde_json::json!({
         "data": { "type": "builds", "id": build_id, "attributes": { "usesNonExemptEncryption": false } }
     });
-    send_json(reqwest::Client::new().patch(format!("{ASC}/builds/{build_id}")).bearer_auth(jwt).json(&body))
-        .await
-        .map(|_| ())
+    send_json(
+        reqwest::Client::new()
+            .patch(format!("{ASC}/builds/{build_id}"))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
+    .await
+    .map(|_| ())
 }
 
-pub(super) async fn asc_attach_build(jwt: &str, version_id: &str, build_id: &str) -> Result<(), String> {
+pub(super) async fn asc_attach_build(
+    jwt: &str,
+    version_id: &str,
+    build_id: &str,
+) -> Result<(), String> {
     let body = serde_json::json!({ "data": { "type": "builds", "id": build_id } });
-    send_json(reqwest::Client::new()
-        .patch(format!("{ASC}/appStoreVersions/{version_id}/relationships/build"))
-        .bearer_auth(jwt)
-        .json(&body))
+    send_json(
+        reqwest::Client::new()
+            .patch(format!(
+                "{ASC}/appStoreVersions/{version_id}/relationships/build"
+            ))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
     .await
     .map(|_| ())
 }
 
 /// Submit the version for App Review through a review submission, reusing an
 /// open (not yet submitted) one if the app already has it. Returns its id.
-pub(super) async fn asc_submit_for_review(jwt: &str, app_id: &str, version_id: &str) -> Result<String, String> {
+pub(super) async fn asc_submit_for_review(
+    jwt: &str,
+    app_id: &str,
+    version_id: &str,
+) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let open = send_json(client
-        .get(format!("{ASC}/reviewSubmissions"))
-        .query(&[("filter[app]", app_id), ("filter[platform]", "IOS"), ("filter[state]", "READY_FOR_REVIEW")])
-        .bearer_auth(jwt))
+    let open = send_json(
+        client
+            .get(format!("{ASC}/reviewSubmissions"))
+            .query(&[
+                ("filter[app]", app_id),
+                ("filter[platform]", "IOS"),
+                ("filter[state]", "READY_FOR_REVIEW"),
+            ])
+            .bearer_auth(jwt),
+    )
     .await?;
-    let submission_id = match open["data"].as_array().and_then(|a| a.first()).and_then(|s| s["id"].as_str()) {
+    let submission_id = match open["data"]
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|s| s["id"].as_str())
+    {
         Some(id) => id.to_string(),
         None => {
             let body = serde_json::json!({
@@ -167,8 +231,17 @@ pub(super) async fn asc_submit_for_review(jwt: &str, app_id: &str, version_id: &
                     "relationships": { "app": { "data": { "type": "apps", "id": app_id } } }
                 }
             });
-            let created = send_json(client.post(format!("{ASC}/reviewSubmissions")).bearer_auth(jwt).json(&body)).await?;
-            created["data"]["id"].as_str().map(str::to_string).ok_or_else(|| format!("No submission id in {created}"))?
+            let created = send_json(
+                client
+                    .post(format!("{ASC}/reviewSubmissions"))
+                    .bearer_auth(jwt)
+                    .json(&body),
+            )
+            .await?;
+            created["data"]["id"]
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| format!("No submission id in {created}"))?
         }
     };
 
@@ -181,7 +254,14 @@ pub(super) async fn asc_submit_for_review(jwt: &str, app_id: &str, version_id: &
             }
         }
     });
-    if let Err(e) = send_json(client.post(format!("{ASC}/reviewSubmissionItems")).bearer_auth(jwt).json(&item)).await {
+    if let Err(e) = send_json(
+        client
+            .post(format!("{ASC}/reviewSubmissionItems"))
+            .bearer_auth(jwt)
+            .json(&item),
+    )
+    .await
+    {
         // Re-running after a partial failure: the version is already an item.
         if !e.contains("409") {
             return Err(e);
@@ -191,19 +271,38 @@ pub(super) async fn asc_submit_for_review(jwt: &str, app_id: &str, version_id: &
     let submit = serde_json::json!({
         "data": { "type": "reviewSubmissions", "id": submission_id, "attributes": { "submitted": true } }
     });
-    send_json(client.patch(format!("{ASC}/reviewSubmissions/{submission_id}")).bearer_auth(jwt).json(&submit)).await?;
+    send_json(
+        client
+            .patch(format!("{ASC}/reviewSubmissions/{submission_id}"))
+            .bearer_auth(jwt)
+            .json(&submit),
+    )
+    .await?;
     Ok(submission_id)
 }
 
 /// (CFBundleShortVersionString, CFBundleVersion) read from an IPA, via the
 /// system `unzip` and `plutil` (macOS — the only place IPAs are uploaded from).
 pub(super) fn ipa_version(ipa: &std::path::Path) -> Option<(String, u32)> {
-    let listing = std::process::Command::new("unzip").arg("-Z1").arg(ipa).output().ok()?;
+    let listing = std::process::Command::new("unzip")
+        .arg("-Z1")
+        .arg(ipa)
+        .output()
+        .ok()?;
     let plist_entry = String::from_utf8_lossy(&listing.stdout)
         .lines()
-        .find(|l| l.starts_with("Payload/") && l.ends_with(".app/Info.plist") && l.matches('/').count() == 2)?
+        .find(|l| {
+            l.starts_with("Payload/")
+                && l.ends_with(".app/Info.plist")
+                && l.matches('/').count() == 2
+        })?
         .to_string();
-    let plist = std::process::Command::new("unzip").arg("-p").arg(ipa).arg(&plist_entry).output().ok()?;
+    let plist = std::process::Command::new("unzip")
+        .arg("-p")
+        .arg(ipa)
+        .arg(&plist_entry)
+        .output()
+        .ok()?;
     let mut plutil = std::process::Command::new("plutil")
         .args(["-convert", "json", "-o", "-", "-"])
         .stdin(std::process::Stdio::piped())
@@ -252,23 +351,36 @@ pub(super) async fn play_update_listing(
         "fullDescription": text.description.trim(),
         "shortDescription": text.short_description.trim(),
     });
-    send_json(reqwest::Client::new()
-        .put(format!("{PLAY}/{package}/edits/{edit_id}/listings/{language}"))
-        .bearer_auth(token)
-        .json(&body))
+    send_json(
+        reqwest::Client::new()
+            .put(format!(
+                "{PLAY}/{package}/edits/{edit_id}/listings/{language}"
+            ))
+            .bearer_auth(token)
+            .json(&body),
+    )
     .await
     .map(|_| ())
 }
 
 /// Upload an AAB into the edit. Returns its versionCode.
-pub(super) async fn play_upload_bundle(token: &str, package: &str, edit_id: &str, aab: &std::path::Path) -> Result<u32, String> {
-    let bytes = tokio::fs::read(aab).await.map_err(|e| format!("Cannot read {}: {e}", aab.display()))?;
-    let resp = send_json(reqwest::Client::new()
-        .post(format!("{PLAY_UPLOAD}/{package}/edits/{edit_id}/bundles"))
-        .query(&[("uploadType", "media")])
-        .bearer_auth(token)
-        .header("Content-Type", "application/octet-stream")
-        .body(bytes))
+pub(super) async fn play_upload_bundle(
+    token: &str,
+    package: &str,
+    edit_id: &str,
+    aab: &std::path::Path,
+) -> Result<u32, String> {
+    let bytes = tokio::fs::read(aab)
+        .await
+        .map_err(|e| format!("Cannot read {}: {e}", aab.display()))?;
+    let resp = send_json(
+        reqwest::Client::new()
+            .post(format!("{PLAY_UPLOAD}/{package}/edits/{edit_id}/bundles"))
+            .query(&[("uploadType", "media")])
+            .bearer_auth(token)
+            .header("Content-Type", "application/octet-stream")
+            .body(bytes),
+    )
     .await?;
     resp["versionCode"]
         .as_u64()
@@ -278,11 +390,19 @@ pub(super) async fn play_upload_bundle(token: &str, package: &str, edit_id: &str
 }
 
 /// Recent App Store versions of an app: (version, state), newest first.
-pub(super) async fn asc_app_versions(jwt: &str, app_id: &str) -> Result<Vec<(String, String)>, String> {
-    let resp = send_json(reqwest::Client::new()
-        .get(format!("{ASC}/apps/{app_id}/appStoreVersions"))
-        .query(&[("fields[appStoreVersions]", "versionString,appStoreState"), ("limit", "5")])
-        .bearer_auth(jwt))
+pub(super) async fn asc_app_versions(
+    jwt: &str,
+    app_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{ASC}/apps/{app_id}/appStoreVersions"))
+            .query(&[
+                ("fields[appStoreVersions]", "versionString,appStoreState"),
+                ("limit", "5"),
+            ])
+            .bearer_auth(jwt),
+    )
     .await?;
     Ok(resp["data"]
         .as_array()
@@ -291,16 +411,32 @@ pub(super) async fn asc_app_versions(jwt: &str, app_id: &str) -> Result<Vec<(Str
         .iter()
         .map(|v| {
             (
-                v["attributes"]["versionString"].as_str().unwrap_or("?").to_string(),
-                v["attributes"]["appStoreState"].as_str().unwrap_or("?").replace('_', " ").to_lowercase(),
+                v["attributes"]["versionString"]
+                    .as_str()
+                    .unwrap_or("?")
+                    .to_string(),
+                v["attributes"]["appStoreState"]
+                    .as_str()
+                    .unwrap_or("?")
+                    .replace('_', " ")
+                    .to_lowercase(),
             )
         })
         .collect())
 }
 
 /// Every track's releases: (track, "name · status · codes").
-pub(super) async fn play_track_summary(token: &str, package: &str, edit_id: &str) -> Result<Vec<(String, String)>, String> {
-    let resp = send_json(reqwest::Client::new().get(format!("{PLAY}/{package}/edits/{edit_id}/tracks")).bearer_auth(token)).await?;
+pub(super) async fn play_track_summary(
+    token: &str,
+    package: &str,
+    edit_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{PLAY}/{package}/edits/{edit_id}/tracks"))
+            .bearer_auth(token),
+    )
+    .await?;
     let mut out = Vec::new();
     for t in resp["tracks"].as_array().cloned().unwrap_or_default() {
         let track = t["track"].as_str().unwrap_or("?").to_string();
@@ -310,11 +446,20 @@ pub(super) async fn play_track_summary(token: &str, package: &str, edit_id: &str
                 .cloned()
                 .unwrap_or_default()
                 .iter()
-                .map(|c| c.as_str().map(str::to_string).unwrap_or_else(|| c.to_string()))
+                .map(|c| {
+                    c.as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| c.to_string())
+                })
                 .collect();
             out.push((
                 track.clone(),
-                format!("{} · {} · versionCode {}", r["name"].as_str().unwrap_or("—"), r["status"].as_str().unwrap_or("?"), codes.join(", ")),
+                format!(
+                    "{} · {} · versionCode {}",
+                    r["name"].as_str().unwrap_or("—"),
+                    r["status"].as_str().unwrap_or("?"),
+                    codes.join(", ")
+                ),
             ));
         }
     }
@@ -322,14 +467,26 @@ pub(super) async fn play_track_summary(token: &str, package: &str, edit_id: &str
 }
 
 /// Highest versionCode on any track of the app, with that track's name.
-pub(super) async fn play_max_version_code(token: &str, package: &str, edit_id: &str) -> Result<Option<(u32, String)>, String> {
-    let resp = send_json(reqwest::Client::new().get(format!("{PLAY}/{package}/edits/{edit_id}/tracks")).bearer_auth(token)).await?;
+pub(super) async fn play_max_version_code(
+    token: &str,
+    package: &str,
+    edit_id: &str,
+) -> Result<Option<(u32, String)>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{PLAY}/{package}/edits/{edit_id}/tracks"))
+            .bearer_auth(token),
+    )
+    .await?;
     let mut best: Option<(u32, String)> = None;
     for t in resp["tracks"].as_array().cloned().unwrap_or_default() {
         let name = t["track"].as_str().unwrap_or("").to_string();
         for r in t["releases"].as_array().cloned().unwrap_or_default() {
             for c in r["versionCodes"].as_array().cloned().unwrap_or_default() {
-                let code = c.as_str().and_then(|s| s.parse().ok()).or_else(|| c.as_u64().map(|n| n as u32));
+                let code = c
+                    .as_str()
+                    .and_then(|s| s.parse().ok())
+                    .or_else(|| c.as_u64().map(|n| n as u32));
                 if let Some(code) = code {
                     if best.as_ref().is_none_or(|(b, _)| code > *b) {
                         best = Some((code, name.clone()));
@@ -353,7 +510,12 @@ pub(super) struct TrackRelease<'a> {
 }
 
 /// Replace a track's releases with this one.
-pub(super) async fn play_update_track(token: &str, package: &str, edit_id: &str, release: TrackRelease<'_>) -> Result<(), String> {
+pub(super) async fn play_update_track(
+    token: &str,
+    package: &str,
+    edit_id: &str,
+    release: TrackRelease<'_>,
+) -> Result<(), String> {
     let release_notes: Vec<serde_json::Value> = release
         .notes
         .iter()
@@ -369,10 +531,12 @@ pub(super) async fn play_update_track(token: &str, package: &str, edit_id: &str,
             "releaseNotes": release_notes,
         }]
     });
-    send_json(reqwest::Client::new()
-        .put(format!("{PLAY}/{package}/edits/{edit_id}/tracks/{track}"))
-        .bearer_auth(token)
-        .json(&body))
+    send_json(
+        reqwest::Client::new()
+            .put(format!("{PLAY}/{package}/edits/{edit_id}/tracks/{track}"))
+            .bearer_auth(token)
+            .json(&body),
+    )
     .await
     .map(|_| ())
 }
@@ -386,7 +550,10 @@ pub(super) async fn play_update_track(token: &str, package: &str, edit_id: &str,
 fn b64decode(input: &str) -> Result<Vec<u8>, String> {
     let mut out = Vec::with_capacity(input.len() * 3 / 4);
     let (mut buf, mut bits) = (0u32, 0u32);
-    for c in input.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=') {
+    for c in input
+        .bytes()
+        .filter(|c| !c.is_ascii_whitespace() && *c != b'=')
+    {
         let v = match c {
             b'A'..=b'Z' => c - b'A',
             b'a'..=b'z' => c - b'a' + 26,
@@ -407,13 +574,29 @@ fn b64decode(input: &str) -> Result<Vec<u8>, String> {
 
 /// Create an Apple Distribution certificate from a CSR. Returns (id, DER).
 /// Apple only lets some API key roles do this; its refusal is passed on.
-pub(super) async fn asc_create_distribution_certificate(jwt: &str, csr_pem: &str) -> Result<(String, Vec<u8>), String> {
+pub(super) async fn asc_create_distribution_certificate(
+    jwt: &str,
+    csr_pem: &str,
+) -> Result<(String, Vec<u8>), String> {
     let body = serde_json::json!({
         "data": { "type": "certificates", "attributes": { "certificateType": "DISTRIBUTION", "csrContent": csr_pem } }
     });
-    let resp = send_json(reqwest::Client::new().post(format!("{ASC}/certificates")).bearer_auth(jwt).json(&body)).await?;
-    let id = resp["data"]["id"].as_str().ok_or_else(|| format!("No certificate id in {resp}"))?.to_string();
-    let der = b64decode(resp["data"]["attributes"]["certificateContent"].as_str().unwrap_or(""))?;
+    let resp = send_json(
+        reqwest::Client::new()
+            .post(format!("{ASC}/certificates"))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
+    .await?;
+    let id = resp["data"]["id"]
+        .as_str()
+        .ok_or_else(|| format!("No certificate id in {resp}"))?
+        .to_string();
+    let der = b64decode(
+        resp["data"]["attributes"]["certificateContent"]
+            .as_str()
+            .unwrap_or(""),
+    )?;
     Ok((id, der))
 }
 
@@ -425,22 +608,32 @@ pub(super) struct AscCertificate {
 }
 
 /// Every distribution certificate on the team.
-pub(super) async fn asc_distribution_certificates(jwt: &str) -> Result<Vec<AscCertificate>, String> {
-    let resp = send_json(reqwest::Client::new()
-        .get(format!("{ASC}/certificates"))
-        .query(&[
-            ("filter[certificateType]", "DISTRIBUTION,IOS_DISTRIBUTION"),
-            ("fields[certificates]", "certificateContent,expirationDate,certificateType"),
-            ("limit", "200"),
-        ])
-        .bearer_auth(jwt))
+pub(super) async fn asc_distribution_certificates(
+    jwt: &str,
+) -> Result<Vec<AscCertificate>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{ASC}/certificates"))
+            .query(&[
+                ("filter[certificateType]", "DISTRIBUTION,IOS_DISTRIBUTION"),
+                (
+                    "fields[certificates]",
+                    "certificateContent,expirationDate,certificateType",
+                ),
+                ("limit", "200"),
+            ])
+            .bearer_auth(jwt),
+    )
     .await?;
     let mut certs = Vec::new();
     for c in resp["data"].as_array().cloned().unwrap_or_default() {
         certs.push(AscCertificate {
             id: c["id"].as_str().unwrap_or_default().to_string(),
             der: b64decode(c["attributes"]["certificateContent"].as_str().unwrap_or(""))?,
-            expires: c["attributes"]["expirationDate"].as_str().unwrap_or("").to_string(),
+            expires: c["attributes"]["expirationDate"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
         });
     }
     Ok(certs)
@@ -448,10 +641,12 @@ pub(super) async fn asc_distribution_certificates(jwt: &str) -> Result<Vec<AscCe
 
 /// The team's bundle ID resource for an identifier like "com.acme.app".
 pub(super) async fn asc_bundle_id(jwt: &str, identifier: &str) -> Result<String, String> {
-    let resp = send_json(reqwest::Client::new()
-        .get(format!("{ASC}/bundleIds"))
-        .query(&[("filter[identifier]", identifier), ("limit", "200")])
-        .bearer_auth(jwt))
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{ASC}/bundleIds"))
+            .query(&[("filter[identifier]", identifier), ("limit", "200")])
+            .bearer_auth(jwt),
+    )
     .await?;
     // The filter also matches longer identifiers; keep the exact one.
     resp["data"]
@@ -470,11 +665,19 @@ pub(super) struct AscProfile {
     pub state: String,
 }
 
-pub(super) async fn asc_bundle_profiles(jwt: &str, bundle_id: &str) -> Result<Vec<AscProfile>, String> {
-    let resp = send_json(reqwest::Client::new()
-        .get(format!("{ASC}/bundleIds/{bundle_id}/profiles"))
-        .query(&[("fields[profiles]", "name,profileType,profileState"), ("limit", "200")])
-        .bearer_auth(jwt))
+pub(super) async fn asc_bundle_profiles(
+    jwt: &str,
+    bundle_id: &str,
+) -> Result<Vec<AscProfile>, String> {
+    let resp = send_json(
+        reqwest::Client::new()
+            .get(format!("{ASC}/bundleIds/{bundle_id}/profiles"))
+            .query(&[
+                ("fields[profiles]", "name,profileType,profileState"),
+                ("limit", "200"),
+            ])
+            .bearer_auth(jwt),
+    )
     .await?;
     Ok(resp["data"]
         .as_array()
@@ -483,19 +686,39 @@ pub(super) async fn asc_bundle_profiles(jwt: &str, bundle_id: &str) -> Result<Ve
         .iter()
         .map(|p| AscProfile {
             id: p["id"].as_str().unwrap_or_default().to_string(),
-            name: p["attributes"]["name"].as_str().unwrap_or_default().to_string(),
-            profile_type: p["attributes"]["profileType"].as_str().unwrap_or_default().to_string(),
-            state: p["attributes"]["profileState"].as_str().unwrap_or_default().to_string(),
+            name: p["attributes"]["name"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            profile_type: p["attributes"]["profileType"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+            state: p["attributes"]["profileState"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
         })
         .collect())
 }
 
 pub(super) async fn asc_delete_profile(jwt: &str, id: &str) -> Result<(), String> {
-    send_json(reqwest::Client::new().delete(format!("{ASC}/profiles/{id}")).bearer_auth(jwt)).await.map(|_| ())
+    send_json(
+        reqwest::Client::new()
+            .delete(format!("{ASC}/profiles/{id}"))
+            .bearer_auth(jwt),
+    )
+    .await
+    .map(|_| ())
 }
 
 /// Create an App Store provisioning profile. Returns the .mobileprovision bytes.
-pub(super) async fn asc_create_app_store_profile(jwt: &str, name: &str, bundle_id: &str, certificate_id: &str) -> Result<Vec<u8>, String> {
+pub(super) async fn asc_create_app_store_profile(
+    jwt: &str,
+    name: &str,
+    bundle_id: &str,
+    certificate_id: &str,
+) -> Result<Vec<u8>, String> {
     let body = serde_json::json!({
         "data": {
             "type": "profiles",
@@ -506,8 +729,18 @@ pub(super) async fn asc_create_app_store_profile(jwt: &str, name: &str, bundle_i
             }
         }
     });
-    let resp = send_json(reqwest::Client::new().post(format!("{ASC}/profiles")).bearer_auth(jwt).json(&body)).await?;
-    b64decode(resp["data"]["attributes"]["profileContent"].as_str().unwrap_or(""))
+    let resp = send_json(
+        reqwest::Client::new()
+            .post(format!("{ASC}/profiles"))
+            .bearer_auth(jwt)
+            .json(&body),
+    )
+    .await?;
+    b64decode(
+        resp["data"]["attributes"]["profileContent"]
+            .as_str()
+            .unwrap_or(""),
+    )
 }
 
 #[cfg(test)]
@@ -533,7 +766,11 @@ mod tests {
 
     #[test]
     fn empty_store_text_is_left_out() {
-        let text = StoreText { description: "An app".into(), whats_new: "Fixes".into(), ..Default::default() };
+        let text = StoreText {
+            description: "An app".into(),
+            whats_new: "Fixes".into(),
+            ..Default::default()
+        };
         let attrs = asc_localization_attributes(&text, "", true);
         assert_eq!(attrs["description"], "An app");
         assert_eq!(attrs["whatsNew"], "Fixes");

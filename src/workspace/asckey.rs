@@ -25,14 +25,19 @@ pub(super) struct AscKey {
 
 /// "ABCDE12345": ten capital letters and digits.
 pub(super) fn valid_key_id(s: &str) -> bool {
-    s.len() == 10 && s.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+    s.len() == 10
+        && s.chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
 }
 
 /// A UUID, as App Store Connect shows the Issuer ID.
 pub(super) fn valid_issuer(s: &str) -> bool {
     let parts: Vec<&str> = s.split('-').collect();
     parts.len() == 5
-        && parts.iter().zip([8, 4, 4, 4, 12]).all(|(p, n)| p.len() == n && p.chars().all(|c| c.is_ascii_hexdigit()))
+        && parts
+            .iter()
+            .zip([8, 4, 4, 4, 12])
+            .all(|(p, n)| p.len() == n && p.chars().all(|c| c.is_ascii_hexdigit()))
 }
 
 /// `AuthKey_ABCDE12345.p8` → `ABCDE12345`.
@@ -59,7 +64,9 @@ pub(super) fn find_p8s(keys_dir: &Path) -> Vec<(PathBuf, String)> {
     ];
     let mut found: Vec<(PathBuf, String)> = Vec::new();
     for dir in dirs {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for p in entries.flatten().map(|e| e.path()) {
             if let Some(id) = key_id_from_file(&p) {
                 // One entry per key: the copy in the keys folder wins.
@@ -75,15 +82,29 @@ pub(super) fn find_p8s(keys_dir: &Path) -> Vec<(PathBuf, String)> {
 /// Keys other projects already use (their `.env`), whose `.p8` still exists.
 pub(super) fn from_other_projects(projects: &[PathBuf], current: &Path) -> Vec<AscKey> {
     let mut keys: Vec<AscKey> = Vec::new();
-    for dir in projects.iter().filter(|d| d.as_path() != current && d.is_dir()) {
+    for dir in projects
+        .iter()
+        .filter(|d| d.as_path() != current && d.is_dir())
+    {
         let resolve = super::env_lookup(dir);
-        let (Some(key_id), Some(issuer_id), Some(p8)) = (resolve(KEY_ID_VAR), resolve(ISSUER_VAR), resolve(P8_VAR)) else {
+        let (Some(key_id), Some(issuer_id), Some(p8)) =
+            (resolve(KEY_ID_VAR), resolve(ISSUER_VAR), resolve(P8_VAR))
+        else {
             continue;
         };
         let p8 = super::signing::expand_home(&p8);
         if p8.is_file() && !keys.iter().any(|k| k.key_id == key_id) {
-            let from = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
-            keys.push(AscKey { key_id, issuer_id, p8, from });
+            let from = dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            keys.push(AscKey {
+                key_id,
+                issuer_id,
+                p8,
+                from,
+            });
         }
     }
     keys
@@ -91,9 +112,16 @@ pub(super) fn from_other_projects(projects: &[PathBuf], current: &Path) -> Vec<A
 
 /// Keep the key in the keys folder (a copy — Apple won't let you download it
 /// again), readable only by you. Returns where it now lives.
-pub(super) fn keep_in_keys_dir(src: &Path, key_id: &str, keys_dir: &Path) -> Result<PathBuf, String> {
+pub(super) fn keep_in_keys_dir(
+    src: &Path,
+    key_id: &str,
+    keys_dir: &Path,
+) -> Result<PathBuf, String> {
     if !is_p8(src) {
-        return Err(format!("{} isn't an App Store Connect key (.p8)", src.display()));
+        return Err(format!(
+            "{} isn't an App Store Connect key (.p8)",
+            src.display()
+        ));
     }
     if src.parent() == Some(keys_dir) {
         return Ok(src.to_path_buf());
@@ -123,8 +151,14 @@ mod tests {
         assert!(!valid_key_id("4talspny5y") && !valid_key_id("4TALSPNY5") && !valid_key_id(""));
         assert!(valid_issuer("69a6de97-00e6-47e3-e053-5b8c7c11a4d1"));
         assert!(!valid_issuer("69a6de97-00e6-47e3-e053") && !valid_issuer("not-a-uuid-at-all-x"));
-        assert_eq!(key_id_from_file(Path::new("/x/AuthKey_4TALSPNY5Y.p8")).as_deref(), Some("4TALSPNY5Y"));
-        assert_eq!(key_id_from_file(Path::new("/x/AuthKey_4TALSPNY5Y (1).p8")), None);
+        assert_eq!(
+            key_id_from_file(Path::new("/x/AuthKey_4TALSPNY5Y.p8")).as_deref(),
+            Some("4TALSPNY5Y")
+        );
+        assert_eq!(
+            key_id_from_file(Path::new("/x/AuthKey_4TALSPNY5Y (1).p8")),
+            None
+        );
         assert_eq!(key_id_from_file(Path::new("/x/key.p8")), None);
     }
 
@@ -144,7 +178,9 @@ mod tests {
         assert_eq!(keep_in_keys_dir(&kept, "ABCDE12345", &keys).unwrap(), kept);
         assert_eq!(find_p8s(&keys)[0], (kept.clone(), "ABCDE12345".to_string()));
         std::fs::write(dir.join("Downloads/not-a-key.p8"), "hello").unwrap();
-        assert!(keep_in_keys_dir(&dir.join("Downloads/not-a-key.p8"), "ABCDE12345", &keys).is_err());
+        assert!(
+            keep_in_keys_dir(&dir.join("Downloads/not-a-key.p8"), "ABCDE12345", &keys).is_err()
+        );
     }
 
     #[test]
@@ -163,7 +199,13 @@ mod tests {
         .unwrap();
         let keys = from_other_projects(&[a.clone(), b.clone()], &b);
         assert_eq!(keys.len(), 1);
-        assert_eq!((keys[0].key_id.as_str(), keys[0].from.as_str()), ("ABCDE12345", "nahw"));
-        assert!(from_other_projects(std::slice::from_ref(&a), &a).is_empty(), "not the project itself");
+        assert_eq!(
+            (keys[0].key_id.as_str(), keys[0].from.as_str()),
+            ("ABCDE12345", "nahw")
+        );
+        assert!(
+            from_other_projects(std::slice::from_ref(&a), &a).is_empty(),
+            "not the project itself"
+        );
     }
 }

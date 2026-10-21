@@ -21,7 +21,9 @@ fn discover_identities() -> Vec<String> {
                     let end = rest.rfind('"')?;
                     Some(rest[..end].to_string())
                 })
-                .filter(|id| id.starts_with("Apple Distribution") || id.starts_with("Apple Development"))
+                .filter(|id| {
+                    id.starts_with("Apple Distribution") || id.starts_with("Apple Development")
+                })
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
@@ -134,8 +136,16 @@ fn AppleCard() -> Element {
     use_effect(move || {
         ws.refresh.read(); // re-scan after a certificate or profile is created
         spawn(async move {
-            identities.set(tokio::task::spawn_blocking(discover_identities).await.unwrap_or_default());
-            profiles.set(tokio::task::spawn_blocking(discover_profiles).await.unwrap_or_default());
+            identities.set(
+                tokio::task::spawn_blocking(discover_identities)
+                    .await
+                    .unwrap_or_default(),
+            );
+            profiles.set(
+                tokio::task::spawn_blocking(discover_profiles)
+                    .await
+                    .unwrap_or_default(),
+            );
         });
     });
 
@@ -143,8 +153,15 @@ fn AppleCard() -> Element {
     let bundle_id = p.ios_bundle_id.trim().to_string();
     let creds = ws.creds.read().clone();
     let selected = ws.profile.read().clone();
-    let profile_ok = selected.as_ref().is_some_and(|i| profile_checks(i, &bundle_id, &identity).iter().all(|c| c.ok));
-    let has_distribution = identities.read().iter().any(|i| i.starts_with("Apple Distribution"));
+    let profile_ok = selected.as_ref().is_some_and(|i| {
+        profile_checks(i, &bundle_id, &identity)
+            .iter()
+            .all(|c| c.ok)
+    });
+    let has_distribution = identities
+        .read()
+        .iter()
+        .any(|i| i.starts_with("Apple Distribution"));
 
     // Profiles for this app first, then App Store ones, then by name.
     let mut sorted = profiles.read().clone();
@@ -369,9 +386,14 @@ fn AscKeySetup() -> Element {
         let projects = ws.settings.peek().recent_projects.clone();
         let (dir, keys) = (ws.dir(), keys_dir(&ws.settings.peek()));
         spawn(async move {
-            let (o, f) = tokio::task::spawn_blocking(move || (asckey::from_other_projects(&projects, &dir), asckey::find_p8s(&keys)))
-                .await
-                .unwrap_or_default();
+            let (o, f) = tokio::task::spawn_blocking(move || {
+                (
+                    asckey::from_other_projects(&projects, &dir),
+                    asckey::find_p8s(&keys),
+                )
+            })
+            .await
+            .unwrap_or_default();
             // The Issuer ID is the same for every key of the team.
             if issuer.peek().is_empty() {
                 if let Some(k) = o.first() {
@@ -396,13 +418,20 @@ fn AscKeySetup() -> Element {
             let path = kept.to_string_lossy().to_string();
             envfile::set_values(
                 &dir,
-                &[(asckey::KEY_ID_VAR, &key.key_id), (asckey::ISSUER_VAR, &key.issuer_id), (asckey::P8_VAR, &path)],
+                &[
+                    (asckey::KEY_ID_VAR, &key.key_id),
+                    (asckey::ISSUER_VAR, &key.issuer_id),
+                    (asckey::P8_VAR, &path),
+                ],
             )
             .map(|_| kept)
         });
         match result {
             Ok(kept) => {
-                state.set(JobState::Ok(format!("Saved in the project's .env · key kept at {}", kept.display())));
+                state.set(JobState::Ok(format!(
+                    "Saved in the project's .env · key kept at {}",
+                    kept.display()
+                )));
                 let mut refresh = ws.refresh;
                 refresh.with_mut(|n| *n += 1);
                 jobs::test_app_store(ws);
@@ -577,9 +606,14 @@ fn PlayKeySetup() -> Element {
         let projects = ws.settings.peek().recent_projects.clone();
         let (dir, keys) = (ws.dir(), keys_dir(&ws.settings.peek()));
         spawn(async move {
-            let (o, f) = tokio::task::spawn_blocking(move || (playkey::from_other_projects(&projects, &dir), playkey::find_keys(&keys)))
-                .await
-                .unwrap_or_default();
+            let (o, f) = tokio::task::spawn_blocking(move || {
+                (
+                    playkey::from_other_projects(&projects, &dir),
+                    playkey::find_keys(&keys),
+                )
+            })
+            .await
+            .unwrap_or_default();
             // A single key on the Mac is almost certainly the one to use.
             if chosen.peek().is_none() && f.len() == 1 {
                 chosen.set(Some(f[0].clone()));
@@ -597,7 +631,10 @@ fn PlayKeySetup() -> Element {
         });
         match result {
             Ok(kept) => {
-                state.set(JobState::Ok(format!("Saved in the project's .env · key kept at {}", kept.display())));
+                state.set(JobState::Ok(format!(
+                    "Saved in the project's .env · key kept at {}",
+                    kept.display()
+                )));
                 let mut refresh = ws.refresh;
                 refresh.with_mut(|n| *n += 1);
                 jobs::test_google_play(ws);
@@ -1010,9 +1047,21 @@ fn BackupCard() -> Element {
     let mut state = use_signal(|| JobState::Idle);
 
     let (ok, detail) = match &backup {
-        BackupState::Never => (false, "No backup yet — if this Mac is lost, so are your keys".to_string()),
-        BackupState::Outdated(at) => (false, format!("Last backup {at} UTC, but keys changed since")),
-        BackupState::Current(at) => (true, format!("Last backup {at} UTC · {}", settings.read().last_backup_path)),
+        BackupState::Never => (
+            false,
+            "No backup yet — if this Mac is lost, so are your keys".to_string(),
+        ),
+        BackupState::Outdated(at) => (
+            false,
+            format!("Last backup {at} UTC, but keys changed since"),
+        ),
+        BackupState::Current(at) => (
+            true,
+            format!(
+                "Last backup {at} UTC · {}",
+                settings.read().last_backup_path
+            ),
+        ),
     };
 
     rsx! {
@@ -1092,8 +1141,12 @@ fn BackupCard() -> Element {
 
 /// Google service-account key file → (project id, key id prefix).
 fn service_account_ids(path: &str) -> Option<(String, String)> {
-    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(signing::expand_home(path)).ok()?).ok()?;
-    Some((v["project_id"].as_str()?.to_string(), v["private_key_id"].as_str()?.chars().take(12).collect()))
+    let v: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(signing::expand_home(path)).ok()?).ok()?;
+    Some((
+        v["project_id"].as_str()?.to_string(),
+        v["private_key_id"].as_str()?.chars().take(12).collect(),
+    ))
 }
 
 /// The checklist from the day a Mac is stolen: what to revoke and replace,

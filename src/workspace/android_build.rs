@@ -30,7 +30,10 @@ pub(super) fn sdk_home() -> PathBuf {
 fn default_sdk_home() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_default();
     if cfg!(windows) {
-        dirs::data_local_dir().unwrap_or_else(|| home.join("AppData/Local")).join("Android").join("Sdk")
+        dirs::data_local_dir()
+            .unwrap_or_else(|| home.join("AppData/Local"))
+            .join("Android")
+            .join("Sdk")
     } else if cfg!(target_os = "macos") {
         home.join("Library/Android/sdk")
     } else {
@@ -40,7 +43,9 @@ fn default_sdk_home() -> PathBuf {
 
 /// "26.1.10909125" → (26, 1, 10909125), for picking the newest version folder.
 fn version_key(name: &str) -> Vec<u64> {
-    name.split(['.', '-', '_']).map(|p| p.parse().unwrap_or(0)).collect()
+    name.split(['.', '-', '_'])
+        .map(|p| p.parse().unwrap_or(0))
+        .collect()
 }
 
 /// The newest version-numbered folder in `dir` (NDK, build-tools).
@@ -57,12 +62,20 @@ pub(super) fn newest_version_dir(dir: &Path) -> Option<PathBuf> {
 
 /// A tool from an SDK folder: `zipalign.exe`, `apksigner.bat` on Windows.
 fn sdk_tool(dir: &Path, name: &str, windows_ext: &str) -> PathBuf {
-    if cfg!(windows) { dir.join(format!("{name}.{windows_ext}")) } else { dir.join(name) }
+    if cfg!(windows) {
+        dir.join(format!("{name}.{windows_ext}"))
+    } else {
+        dir.join(name)
+    }
 }
 
 /// Gradle's wrapper in a generated project.
 fn gradlew(build_dir: &Path) -> PathBuf {
-    build_dir.join(if cfg!(windows) { "gradlew.bat" } else { "gradlew" })
+    build_dir.join(if cfg!(windows) {
+        "gradlew.bat"
+    } else {
+        "gradlew"
+    })
 }
 
 /// The Dioxus CLI. Cargo's own copy first: Homebrew's deno installs a `dx`
@@ -74,7 +87,11 @@ pub(super) fn dx_command() -> PathBuf {
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".cargo"))
         .join("bin")
         .join(exe);
-    if cargo_dx.is_file() { cargo_dx } else { PathBuf::from("dx") }
+    if cargo_dx.is_file() {
+        cargo_dx
+    } else {
+        PathBuf::from("dx")
+    }
 }
 
 /// Show a file in the system's file manager.
@@ -102,7 +119,11 @@ pub(super) fn reveal(path: &Path) {
 /// Replace every `key = <value>` (spaces optional), as the scripts' sed did.
 /// `quoted` values are written as `"value"`.
 fn replace_assignments(text: &str, key: &str, value: &str, quoted: bool) -> String {
-    let new_value = if quoted { format!("\"{value}\"") } else { value.to_string() };
+    let new_value = if quoted {
+        format!("\"{value}\"")
+    } else {
+        value.to_string()
+    };
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(i) = rest.find(key) {
@@ -111,13 +132,23 @@ fn replace_assignments(text: &str, key: &str, value: &str, quoted: bool) -> Stri
         let after = &after_key[key.len()..];
         let trimmed = after.trim_start_matches(' ');
         // Only a whole word followed by `=`.
-        let word_start = before.chars().last().is_none_or(|c| !c.is_alphanumeric() && c != '_');
+        let word_start = before
+            .chars()
+            .last()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
         if word_start && trimmed.starts_with('=') {
             let value_part = trimmed[1..].trim_start_matches(' ');
             let old_len = if quoted {
-                value_part.strip_prefix('"').and_then(|v| v.find('"').map(|e| e + 2))
+                value_part
+                    .strip_prefix('"')
+                    .and_then(|v| v.find('"').map(|e| e + 2))
             } else {
-                Some(value_part.chars().take_while(|c| c.is_ascii_digit()).count())
+                Some(
+                    value_part
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .count(),
+                )
             };
             if let Some(len) = old_len {
                 out.push_str(key);
@@ -141,7 +172,13 @@ pub(super) fn set_dioxus_versions(toml: &str, code: u32, name: &str) -> String {
 }
 
 /// The generated build.gradle.kts with the app's package and version.
-pub(super) fn patch_gradle(gradle: &str, old_package: &str, package: &str, code: u32, name: &str) -> String {
+pub(super) fn patch_gradle(
+    gradle: &str,
+    old_package: &str,
+    package: &str,
+    code: u32,
+    name: &str,
+) -> String {
     let g = gradle.replace(old_package, package);
     let g = replace_assignments(&g, "versionCode", &code.to_string(), false);
     replace_assignments(&g, "versionName", name, true)
@@ -150,12 +187,20 @@ pub(super) fn patch_gradle(gradle: &str, old_package: &str, package: &str, code:
 /// The app's name instead of dx's `@string/app_name` placeholder.
 pub(super) fn set_label(manifest: &str, app_name: &str) -> String {
     let escaped = app_name.replace('&', "&amp;").replace('"', "&quot;");
-    manifest.replace("android:label=\"@string/app_name\"", &format!("android:label=\"{escaped}\""))
+    manifest.replace(
+        "android:label=\"@string/app_name\"",
+        &format!("android:label=\"{escaped}\""),
+    )
 }
 
 /// A Kotlin string literal: `\`, `"` and `$` (templates) escaped.
 fn kotlin_string(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"").replace('$', "\\$"))
+    format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('$', "\\$")
+    )
 }
 
 /// Add a release signing config that reads the passwords from the
@@ -173,9 +218,17 @@ pub(super) fn inject_signing(gradle: &str, keystore: &Path, alias: &str) -> Stri
         if line.trim_start().starts_with("buildTypes {") {
             out.push(format!("{indent}signingConfigs {{"));
             out.push(format!("{indent}    create(\"release\") {{"));
-            out.push(format!("{indent}        storeFile = file({})", kotlin_string(&store)));
-            out.push(format!("{indent}        storePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")"));
-            out.push(format!("{indent}        keyAlias = {}", kotlin_string(alias)));
+            out.push(format!(
+                "{indent}        storeFile = file({})",
+                kotlin_string(&store)
+            ));
+            out.push(format!(
+                "{indent}        storePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")"
+            ));
+            out.push(format!(
+                "{indent}        keyAlias = {}",
+                kotlin_string(alias)
+            ));
             out.push(format!(
                 "{indent}        keyPassword = System.getenv(\"ANDROID_KEY_PASSWORD\") ?: System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")"
             ));
@@ -184,7 +237,9 @@ pub(super) fn inject_signing(gradle: &str, keystore: &Path, alias: &str) -> Stri
             out.push(line.to_string());
         } else if line.trim_start().starts_with("getByName(\"release\") {") {
             out.push(line.to_string());
-            out.push(format!("{indent}    signingConfig = signingConfigs.getByName(\"release\")"));
+            out.push(format!(
+                "{indent}    signingConfig = signingConfigs.getByName(\"release\")"
+            ));
         } else {
             out.push(line.to_string());
         }
@@ -199,7 +254,10 @@ pub(super) fn inject_signing(gradle: &str, keystore: &Path, alias: &str) -> Stri
 /// What dx names the package by default: com.example.<Slug>.
 pub(super) fn dx_default_package(slug: &str) -> String {
     let mut c = slug.chars();
-    let title = c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default();
+    let title = c
+        .next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default();
     format!("com.example.{title}")
 }
 
@@ -208,7 +266,9 @@ pub(super) fn dx_default_package(slug: &str) -> String {
 // ---------------------------------------------------------------------------
 
 fn files_named(dir: &Path, matches: &dyn Fn(&Path) -> bool, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for p in entries.flatten().map(|e| e.path()) {
         if p.is_dir() {
             files_named(&p, matches, out);
@@ -222,7 +282,11 @@ fn copy_dir(src: &Path, dest: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dest)?;
     for e in std::fs::read_dir(src)?.flatten() {
         let (from, to) = (e.path(), dest.join(e.file_name()));
-        if from.is_dir() { copy_dir(&from, &to)? } else { std::fs::copy(&from, &to).map(|_| ())? }
+        if from.is_dir() {
+            copy_dir(&from, &to)?
+        } else {
+            std::fs::copy(&from, &to).map(|_| ())?
+        }
     }
     Ok(())
 }
@@ -238,7 +302,10 @@ fn use_project_icons(project: &Path, res: &Path) -> Result<Option<String>, Strin
     let mut stale = Vec::new();
     files_named(
         res,
-        &|p| p.file_name().is_some_and(|n| n == "ic_launcher.webp" || n == "ic_launcher_round.webp"),
+        &|p| {
+            p.file_name()
+                .is_some_and(|n| n == "ic_launcher.webp" || n == "ic_launcher_round.webp")
+        },
         &mut stale,
     );
     for f in stale {
@@ -247,12 +314,17 @@ fn use_project_icons(project: &Path, res: &Path) -> Result<Option<String>, Strin
     for xml in ["ic_launcher.xml", "ic_launcher_round.xml"] {
         let _ = std::fs::remove_file(res.join("mipmap-anydpi-v26").join(xml));
     }
-    for e in std::fs::read_dir(&icons).map_err(|e| e.to_string())?.flatten() {
+    for e in std::fs::read_dir(&icons)
+        .map_err(|e| e.to_string())?
+        .flatten()
+    {
         if e.path().is_dir() && e.file_name().to_string_lossy().starts_with("mipmap-") {
             copy_dir(&e.path(), &res.join(e.file_name())).map_err(|e| e.to_string())?;
         }
     }
-    Ok(Some("Icons replaced with manual_assets/android_icons".into()))
+    Ok(Some(
+        "Icons replaced with manual_assets/android_icons".into(),
+    ))
 }
 
 /// Package name in Kotlin sources and the manifest, and the app's label.
@@ -260,7 +332,10 @@ fn fix_sources(src: &Path, old_package: &str, package: &str, app_name: &str) -> 
     let mut files = Vec::new();
     files_named(
         src,
-        &|p| p.extension().is_some_and(|e| e == "kt") || p.file_name().is_some_and(|n| n == "AndroidManifest.xml"),
+        &|p| {
+            p.extension().is_some_and(|e| e == "kt")
+                || p.file_name().is_some_and(|n| n == "AndroidManifest.xml")
+        },
         &mut files,
     );
     for f in files {
@@ -314,7 +389,12 @@ pub(super) struct Job {
 
 impl Job {
     fn env(&self, key: &str) -> Option<&str> {
-        self.env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.as_str()).filter(|v| !v.is_empty())
+        self.env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+            .filter(|v| !v.is_empty())
     }
 }
 
@@ -325,24 +405,48 @@ fn command(program: &Path, dir: &Path, job: &Job, sdk: &Path, ndk: &Path) -> Com
     for (k, v) in &job.env {
         cmd.env(k, v);
     }
-    cmd.env("ANDROID_HOME", sdk).env("ANDROID_SDK_ROOT", sdk).env("ANDROID_NDK_HOME", ndk);
+    cmd.env("ANDROID_HOME", sdk)
+        .env("ANDROID_SDK_ROOT", sdk)
+        .env("ANDROID_NDK_HOME", ndk);
     cmd
 }
 
 /// Run the build, logging as it goes. Returns the file it produced.
-pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -> Result<PathBuf, String> {
+pub(super) async fn run(
+    project: PathBuf,
+    job: Job,
+    log: impl Into<jobs::Log>,
+) -> Result<PathBuf, String> {
     let log = log.into();
     let mut say = |s: String| log.push(s);
     let sdk = sdk_home();
     let ndk = newest_version_dir(&sdk.join("ndk"))
         .ok_or_else(|| format!("Android NDK not found in {} — install it in Android Studio: SDK Manager → SDK Tools → NDK (Side by side).", sdk.join("ndk").display()))?;
-    say(format!("🚀 Android {} build", if job.kind == Kind::Release { "release (AAB)" } else { "debug (APK)" }));
-    say(format!("   SDK {} · NDK {}", sdk.display(), ndk.file_name().unwrap_or_default().to_string_lossy()));
+    say(format!(
+        "🚀 Android {} build",
+        if job.kind == Kind::Release {
+            "release (AAB)"
+        } else {
+            "debug (APK)"
+        }
+    ));
+    say(format!(
+        "   SDK {} · NDK {}",
+        sdk.display(),
+        ndk.file_name().unwrap_or_default().to_string_lossy()
+    ));
 
     // dx refuses to bundle a project whose Dioxus library is a different version.
     let dx = dx_command();
-    let version = Command::new(&dx).quiet().arg("--version").output().ok().map(|o| String::from_utf8_lossy(&o.stdout).to_string());
-    let lib = std::fs::read_to_string(project.join("Cargo.lock")).ok().and_then(|l| doctor::locked_dioxus(&l));
+    let version = Command::new(&dx)
+        .quiet()
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+    let lib = std::fs::read_to_string(project.join("Cargo.lock"))
+        .ok()
+        .and_then(|l| doctor::locked_dioxus(&l));
     match (doctor::dx_from(version.as_deref()), &lib) {
         (doctor::Dx::Missing, _) => return Err("dx not found — install it with: cargo install dioxus-cli --locked".into()),
         (doctor::Dx::Other(name), _) => {
@@ -381,7 +485,9 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
             dx_cmd.args(["bundle", "--platform", "android", "--release"]);
             say("📦 dx bundle --platform android --release".into());
             if let Err(e) = jobs::stream_command(dx_cmd, "dx bundle", log.clone()).await {
-                say(format!("   ({e} — continuing, the Gradle project is fixed and rebuilt below)"));
+                say(format!(
+                    "   ({e} — continuing, the Gradle project is fixed and rebuilt below)"
+                ));
             }
         }
         Kind::DebugApk => {
@@ -391,7 +497,9 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
         }
     }
     if !gradle_file.is_file() {
-        return Err("dx stopped before generating the Android project — see its error above.".into());
+        return Err(
+            "dx stopped before generating the Android project — see its error above.".into(),
+        );
     }
 
     // 2. Icons, package name, version and signing.
@@ -401,7 +509,13 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
     let old_package = dx_default_package(&job.slug);
     let mut gradle = std::fs::read_to_string(&gradle_file).map_err(|e| e.to_string())?;
     if job.kind == Kind::Release {
-        gradle = patch_gradle(&gradle, &old_package, &job.package, job.version_code, &job.version_name);
+        gradle = patch_gradle(
+            &gradle,
+            &old_package,
+            &job.package,
+            job.version_code,
+            &job.version_name,
+        );
         let toml_path = project.join("Dioxus.toml");
         if let Ok(toml) = std::fs::read_to_string(&toml_path) {
             let new = set_dioxus_versions(&toml, job.version_code, &job.version_name);
@@ -412,13 +526,21 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
         if let Some(ks) = &keystore {
             gradle = inject_signing(&gradle, ks, &job.alias);
         }
-        say(format!("🔧 {} · version {} ({})", job.package, job.version_name, job.version_code));
+        say(format!(
+            "🔧 {} · version {} ({})",
+            job.package, job.version_name, job.version_code
+        ));
     } else {
         gradle = gradle.replace(&old_package, &job.package);
         say(format!("🔧 {}", job.package));
     }
     std::fs::write(&gradle_file, gradle).map_err(|e| e.to_string())?;
-    fix_sources(&build_dir.join("app/src"), &old_package, &job.package, &job.app_name)?;
+    fix_sources(
+        &build_dir.join("app/src"),
+        &old_package,
+        &job.package,
+        &job.app_name,
+    )?;
 
     // 3. Gradle.
     let mut gradle_cmd = command(&gradlew(&build_dir), &build_dir, &job, &sdk, &ndk);
@@ -426,7 +548,14 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
         Kind::Release => gradle_cmd.arg("bundleRelease"),
         Kind::DebugApk => gradle_cmd.args(["clean", "assembleDebug"]),
     };
-    say(format!("🏗️  Gradle {}", if job.kind == Kind::Release { "bundleRelease" } else { "assembleDebug" }));
+    say(format!(
+        "🏗️  Gradle {}",
+        if job.kind == Kind::Release {
+            "bundleRelease"
+        } else {
+            "assembleDebug"
+        }
+    ));
     jobs::stream_command(gradle_cmd, "Gradle", log.clone()).await?;
 
     // 4. The result, next to the project's other bundles.
@@ -445,7 +574,10 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
                 .output()
                 .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("jar verified"));
             if !verified {
-                return Err(format!("{} was built but its signature doesn't verify", target.display()));
+                return Err(format!(
+                    "{} was built but its signature doesn't verify",
+                    target.display()
+                ));
             }
             say(format!("✅ Signed AAB: {}", target.display()));
             reveal(&target);
@@ -453,9 +585,15 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
         }
         Kind::DebugApk => {
             let mut apks = Vec::new();
-            files_named(&build_dir.join("app/build/outputs/apk"), &|p| p.extension().is_some_and(|e| e == "apk"), &mut apks);
+            files_named(
+                &build_dir.join("app/build/outputs/apk"),
+                &|p| p.extension().is_some_and(|e| e == "apk"),
+                &mut apks,
+            );
             apks.sort_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
-            let apk = apks.pop().ok_or("Gradle finished but no APK was produced")?;
+            let apk = apks
+                .pop()
+                .ok_or("Gradle finished but no APK was produced")?;
             let target = project.join(format!("{}-debug.apk", job.slug));
             let signed = sign_debug_apk(&apk, &sdk, &target, &mut say);
             if !signed {
@@ -471,22 +609,37 @@ pub(super) async fn run(project: PathBuf, job: Job, log: impl Into<jobs::Log>) -
 /// zipalign + apksigner with the debug keystore Gradle created, for an APK
 /// that installs on any device. False if the tools or key aren't there.
 fn sign_debug_apk(apk: &Path, sdk: &Path, target: &Path, say: &mut impl FnMut(String)) -> bool {
-    let Some(tools) = newest_version_dir(&sdk.join("build-tools")) else { return false };
-    let debug_ks = dirs::home_dir().unwrap_or_default().join(".android/debug.keystore");
+    let Some(tools) = newest_version_dir(&sdk.join("build-tools")) else {
+        return false;
+    };
+    let debug_ks = dirs::home_dir()
+        .unwrap_or_default()
+        .join(".android/debug.keystore");
     if !debug_ks.is_file() {
         return false;
     }
     let aligned = apk.with_file_name("app-aligned.apk");
     let _ = std::fs::remove_file(&aligned);
     let ok = |c: &mut Command| c.output().is_ok_and(|o| o.status.success());
-    if !ok(Command::new(sdk_tool(&tools, "zipalign", "exe")).quiet().args(["-p", "4"]).arg(apk).arg(&aligned)) {
+    if !ok(Command::new(sdk_tool(&tools, "zipalign", "exe"))
+        .quiet()
+        .args(["-p", "4"])
+        .arg(apk)
+        .arg(&aligned))
+    {
         return false;
     }
     let signed = ok(Command::new(sdk_tool(&tools, "apksigner", "bat"))
         .quiet()
         .args(["sign", "--ks"])
         .arg(&debug_ks)
-        .args(["--ks-pass", "pass:android", "--key-pass", "pass:android", "--out"])
+        .args([
+            "--ks-pass",
+            "pass:android",
+            "--key-pass",
+            "pass:android",
+            "--out",
+        ])
         .arg(target)
         .arg(&aligned));
     let _ = std::fs::remove_file(&aligned);
@@ -518,35 +671,60 @@ mod tests {
 
     #[test]
     fn patches_package_and_version_like_the_scripts_did() {
-        let g = patch_gradle(GRADLE, &dx_default_package("nahw"), "com.mayorana.nahw", 7, "1.2.0");
-        assert!(g.contains("applicationId = \"com.mayorana.nahw\"") && g.contains("namespace = \"com.mayorana.nahw\""));
+        let g = patch_gradle(
+            GRADLE,
+            &dx_default_package("nahw"),
+            "com.mayorana.nahw",
+            7,
+            "1.2.0",
+        );
+        assert!(
+            g.contains("applicationId = \"com.mayorana.nahw\"")
+                && g.contains("namespace = \"com.mayorana.nahw\"")
+        );
         assert!(g.contains("versionCode = 7") && g.contains("versionName = \"1.2.0\""));
         assert!(!g.contains("com.example"));
         let toml = "[android]\nversion_code=3\nversion_name = \"1.0\"\nmin_sdk = 24\n";
-        assert_eq!(set_dioxus_versions(toml, 7, "1.2.0"), "[android]\nversion_code = 7\nversion_name = \"1.2.0\"\nmin_sdk = 24\n");
+        assert_eq!(
+            set_dioxus_versions(toml, 7, "1.2.0"),
+            "[android]\nversion_code = 7\nversion_name = \"1.2.0\"\nmin_sdk = 24\n"
+        );
         // Other keys that merely contain the name are left alone.
-        assert_eq!(replace_assignments("myversionCode = 3", "versionCode", "9", false), "myversionCode = 3");
+        assert_eq!(
+            replace_assignments("myversionCode = 3", "versionCode", "9", false),
+            "myversionCode = 3"
+        );
     }
 
     #[test]
     fn signing_reads_passwords_from_the_environment() {
         let g = inject_signing(GRADLE, Path::new(r"C:\Users\me\keys\upload.jks"), "nahw");
-        assert!(g.contains("storeFile = file(\"C:/Users/me/keys/upload.jks\")"), "{g}");
+        assert!(
+            g.contains("storeFile = file(\"C:/Users/me/keys/upload.jks\")"),
+            "{g}"
+        );
         assert!(g.contains("storePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")"));
         assert!(g.contains("keyAlias = \"nahw\""));
         let config = g.find("signingConfigs {").unwrap();
-        assert!(config < g.find("buildTypes {").unwrap(), "declared before it's used");
+        assert!(
+            config < g.find("buildTypes {").unwrap(),
+            "declared before it's used"
+        );
         assert!(g.contains("getByName(\"release\") {\n            signingConfig = signingConfigs.getByName(\"release\")"));
         // Idempotent, and a `$` can't open a Kotlin template.
         assert_eq!(inject_signing(&g, Path::new("/x"), "a"), g);
-        assert!(inject_signing(GRADLE, Path::new("/k/$HOME.jks"), "a").contains("file(\"/k/\\$HOME.jks\")"));
+        assert!(inject_signing(GRADLE, Path::new("/k/$HOME.jks"), "a")
+            .contains("file(\"/k/\\$HOME.jks\")"));
     }
 
     #[test]
     fn labels_and_default_packages() {
         assert_eq!(dx_default_package("nahw"), "com.example.Nahw");
         assert_eq!(
-            set_label(r#"<application android:label="@string/app_name">"#, "Tafseel & Co"),
+            set_label(
+                r#"<application android:label="@string/app_name">"#,
+                "Tafseel & Co"
+            ),
             r#"<application android:label="Tafseel &amp; Co">"#
         );
     }
@@ -572,18 +750,32 @@ mod tests {
         std::fs::write(res.join("mipmap-hdpi/ic_launcher.webp"), "dx").unwrap();
         std::fs::write(res.join("mipmap-anydpi-v26/ic_launcher.xml"), "adaptive").unwrap();
         std::fs::create_dir_all(p.join("manual_assets/android_icons/mipmap-hdpi")).unwrap();
-        std::fs::write(p.join("manual_assets/android_icons/mipmap-hdpi/ic_launcher.png"), "mine").unwrap();
+        std::fs::write(
+            p.join("manual_assets/android_icons/mipmap-hdpi/ic_launcher.png"),
+            "mine",
+        )
+        .unwrap();
         assert!(use_project_icons(&p, &res).unwrap().is_some());
         assert!(!res.join("mipmap-hdpi/ic_launcher.webp").exists());
         assert!(!res.join("mipmap-anydpi-v26/ic_launcher.xml").exists());
-        assert_eq!(std::fs::read_to_string(res.join("mipmap-hdpi/ic_launcher.png")).unwrap(), "mine");
+        assert_eq!(
+            std::fs::read_to_string(res.join("mipmap-hdpi/ic_launcher.png")).unwrap(),
+            "mine"
+        );
 
         let src = p.join("gen/src");
         std::fs::create_dir_all(src.join("main/kotlin")).unwrap();
-        std::fs::write(src.join("main/kotlin/Main.kt"), "package com.example.Nahw\n").unwrap();
+        std::fs::write(
+            src.join("main/kotlin/Main.kt"),
+            "package com.example.Nahw\n",
+        )
+        .unwrap();
         std::fs::write(src.join("main/AndroidManifest.xml"), r#"<manifest package="com.example.Nahw"><application android:label="@string/app_name"/></manifest>"#).unwrap();
         fix_sources(&src, "com.example.Nahw", "com.mayorana.nahw", "Nahw").unwrap();
-        assert_eq!(std::fs::read_to_string(src.join("main/kotlin/Main.kt")).unwrap(), "package com.mayorana.nahw\n");
+        assert_eq!(
+            std::fs::read_to_string(src.join("main/kotlin/Main.kt")).unwrap(),
+            "package com.mayorana.nahw\n"
+        );
         let m = std::fs::read_to_string(src.join("main/AndroidManifest.xml")).unwrap();
         assert!(m.contains("com.mayorana.nahw") && m.contains("android:label=\"Nahw\""));
     }

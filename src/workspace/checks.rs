@@ -61,7 +61,13 @@ pub(super) fn plist_value(text: &str, key: &str) -> Option<String> {
         .into_iter()
         .filter_map(|tag| after.find(tag).map(|i| (i, tag)))
         .min()
-        .map(|(_, tag)| if tag == "<string>" { ("<string>", "</string>") } else { ("<date>", "</date>") })?;
+        .map(|(_, tag)| {
+            if tag == "<string>" {
+                ("<string>", "</string>")
+            } else {
+                ("<date>", "</date>")
+            }
+        })?;
     let start = after.find(open)? + open.len();
     let end = after[start..].find(close)?;
     Some(after[start..start + end].trim().to_string())
@@ -69,7 +75,11 @@ pub(super) fn plist_value(text: &str, key: &str) -> Option<String> {
 
 fn plist_true(text: &str, key: &str) -> bool {
     text.find(&format!("<key>{key}</key>"))
-        .and_then(|i| text[i..].split_once("</key>").map(|(_, rest)| rest.trim_start().starts_with("<true/>")))
+        .and_then(|i| {
+            text[i..]
+                .split_once("</key>")
+                .map(|(_, rest)| rest.trim_start().starts_with("<true/>"))
+        })
         .unwrap_or(false)
 }
 
@@ -93,11 +103,17 @@ pub(super) fn read_profile(path: &std::path::Path) -> Option<ProfileInfo> {
     };
     Some(ProfileInfo {
         path: path.to_string_lossy().to_string(),
-        name: plist_value(&text, "Name")
-            .unwrap_or_else(|| path.file_stem().unwrap_or_default().to_string_lossy().to_string()),
+        name: plist_value(&text, "Name").unwrap_or_else(|| {
+            path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        }),
         app_id,
         team_id,
-        expires: plist_value(&text, "ExpirationDate").map(|d| d.chars().take(10).collect()).unwrap_or_default(),
+        expires: plist_value(&text, "ExpirationDate")
+            .map(|d| d.chars().take(10).collect())
+            .unwrap_or_default(),
         kind,
     })
 }
@@ -132,9 +148,13 @@ pub(super) fn install_profile(content: &[u8]) -> Result<std::path::PathBuf, Stri
     install_profile_in(&profile_dirs()[0], content)
 }
 
-fn install_profile_in(folder: &std::path::Path, content: &[u8]) -> Result<std::path::PathBuf, String> {
+fn install_profile_in(
+    folder: &std::path::Path,
+    content: &[u8],
+) -> Result<std::path::PathBuf, String> {
     let text = String::from_utf8_lossy(content);
-    let uuid = plist_value(&text, "UUID").ok_or("This isn't a provisioning profile (no UUID inside)")?;
+    let uuid =
+        plist_value(&text, "UUID").ok_or("This isn't a provisioning profile (no UUID inside)")?;
     if plist_value(&text, "application-identifier").is_none() {
         return Err("This profile has no app identifier".into());
     }
@@ -153,17 +173,33 @@ fn identity_team(identity: &str) -> Option<&str> {
 
 /// Checks for the Accounts step: does this profile fit this app, this
 /// identity, and an App Store upload?
-pub(super) fn profile_checks(profile: &ProfileInfo, bundle_id: &str, identity: &str) -> Vec<CredCheck> {
+pub(super) fn profile_checks(
+    profile: &ProfileInfo,
+    bundle_id: &str,
+    identity: &str,
+) -> Vec<CredCheck> {
     let mut checks = vec![
         CredCheck {
             label: "Matches bundle ID",
             ok: profile.matches_bundle(bundle_id),
-            detail: format!("Profile is for {} · app is {}", profile.app_id, if bundle_id.is_empty() { "not set" } else { bundle_id }),
+            detail: format!(
+                "Profile is for {} · app is {}",
+                profile.app_id,
+                if bundle_id.is_empty() {
+                    "not set"
+                } else {
+                    bundle_id
+                }
+            ),
         },
         CredCheck {
             label: "Not expired",
             ok: !profile.expired(),
-            detail: if profile.expires.is_empty() { "No expiry date found".into() } else { format!("Expires {}", profile.expires) },
+            detail: if profile.expires.is_empty() {
+                "No expiry date found".into()
+            } else {
+                format!("Expires {}", profile.expires)
+            },
         },
         CredCheck {
             label: "App Store distribution",
@@ -215,7 +251,9 @@ pub(super) fn utc_now() -> String {
 pub(crate) fn valid_version(v: &str) -> bool {
     let parts: Vec<&str> = v.split('.').collect();
     (1..=3).contains(&parts.len())
-        && parts.iter().all(|p| !p.is_empty() && p.len() <= 9 && p.chars().all(|c| c.is_ascii_digit()))
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.len() <= 9 && p.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Bump component `idx` (0 = major) of a version, zeroing the ones after it.
@@ -226,7 +264,11 @@ pub(super) fn bump_version(v: &str, idx: usize) -> String {
     for p in parts.iter_mut().skip(idx + 1) {
         *p = 0;
     }
-    parts.iter().map(u64::to_string).collect::<Vec<_>>().join(".")
+    parts
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 /// `key = value` from a TOML file, unquoted — enough for Dioxus.toml's
@@ -241,23 +283,37 @@ fn toml_value(text: &str, key: &str) -> Option<String> {
 /// `key = value` inside `[section]` only, unquoted.
 fn toml_in(text: &str, section: &str, key: &str) -> Option<String> {
     let mut inside = false;
-    text.lines().find_map(|line| {
-        let t = line.trim();
-        if t.starts_with('[') {
-            inside = t == format!("[{section}]");
-            return None;
-        }
-        let (k, v) = t.split_once('=')?;
-        (inside && k.trim() == key).then(|| v.split('#').next().unwrap_or("").trim().trim_matches('"').to_string())
-    })
-    .filter(|v| !v.is_empty())
+    text.lines()
+        .find_map(|line| {
+            let t = line.trim();
+            if t.starts_with('[') {
+                inside = t == format!("[{section}]");
+                return None;
+            }
+            let (k, v) = t.split_once('=')?;
+            (inside && k.trim() == key).then(|| {
+                v.split('#')
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .trim_matches('"')
+                    .to_string()
+            })
+        })
+        .filter(|v| !v.is_empty())
 }
 
 /// `NAME="value"` from a shell script, when it's a plain value (no `$…`).
 fn shell_var(text: &str, name: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let v = line.trim().strip_prefix(&format!("{name}="))?;
-        let v = v.split(" #").next().unwrap_or(v).trim().trim_matches('"').trim_matches('\'');
+        let v = v
+            .split(" #")
+            .next()
+            .unwrap_or(v)
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'');
         (!v.is_empty() && !v.contains('$') && !v.contains('{')).then(|| v.to_string())
     })
 }
@@ -292,29 +348,61 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
     let android_script = read("build_android_release.sh");
     let appfile = read("fastlane/Appfile");
     let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
-    let first = |candidates: Vec<Option<String>>| candidates.into_iter().flatten().find(|v| !v.trim().is_empty());
+    let first = |candidates: Vec<Option<String>>| {
+        candidates
+            .into_iter()
+            .flatten()
+            .find(|v| !v.trim().is_empty())
+    };
 
     // dx builds into target/dx/<Cargo package name>; the folder is the proof.
     let dx_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(dir.join("target/dx"))
-        .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.join("release").is_dir()).collect())
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.path())
+                .filter(|p| p.join("release").is_dir())
+                .collect()
+        })
         .unwrap_or_default();
     let cargo_name = toml_in(&cargo, "package", "name");
     let slug = first(vec![
-        cargo_name.clone().filter(|n| dx_dirs.is_empty() || dx_dirs.iter().any(|d| d.ends_with(n))),
-        (dx_dirs.len() == 1).then(|| dx_dirs[0].file_name().unwrap_or_default().to_string_lossy().to_string()),
+        cargo_name
+            .clone()
+            .filter(|n| dx_dirs.is_empty() || dx_dirs.iter().any(|d| d.ends_with(n))),
+        (dx_dirs.len() == 1).then(|| {
+            dx_dirs[0]
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        }),
         cargo_name,
     ]);
-    let built = |platform: &str| slug.as_ref().is_some_and(|s| dir.join(format!("target/dx/{s}/release/{platform}")).is_dir());
+    let built = |platform: &str| {
+        slug.as_ref().is_some_and(|s| {
+            dir.join(format!("target/dx/{s}/release/{platform}"))
+                .is_dir()
+        })
+    };
     let gradle = slug
         .as_ref()
-        .and_then(|s| std::fs::read_to_string(dir.join(format!("target/dx/{s}/release/android/app/app/build.gradle.kts"))).ok())
+        .and_then(|s| {
+            std::fs::read_to_string(dir.join(format!(
+                "target/dx/{s}/release/android/app/app/build.gradle.kts"
+            )))
+            .ok()
+        })
         .unwrap_or_default();
     let bundle_identifier = first(vec![
         toml_in(&dioxus, "bundle", "identifier"),
         toml_in(&dioxus, "mobile", "bundle_identifier"),
     ]);
     let root_files: Vec<String> = std::fs::read_dir(dir)
-        .map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect())
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .collect()
+        })
         .unwrap_or_default();
     let has_file = |ext: &str| root_files.iter().any(|f| f.ends_with(ext));
 
@@ -348,8 +436,14 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
             shell_var(&android_script, "V_NAME"),
         ])
         .filter(|v| valid_version(v)),
-        has_ios: built("ios") || has_file(".ipa") || !ios_script.is_empty() || root_files.iter().any(|f| f == "Entitlements.plist"),
-        has_android: built("android") || has_file(".aab") || has_file(".apk") || !android_script.is_empty(),
+        has_ios: built("ios")
+            || has_file(".ipa")
+            || !ios_script.is_empty()
+            || root_files.iter().any(|f| f == "Entitlements.plist"),
+        has_android: built("android")
+            || has_file(".aab")
+            || has_file(".apk")
+            || !android_script.is_empty(),
         slug,
     }
 }
@@ -358,9 +452,14 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
 /// empty. A project nobody has set up yet also gets its platforms and
 /// version from its files. Returns whether anything changed.
 pub(super) fn seed_identity(p: &mut ProjectState, dir: &std::path::Path) -> bool {
-    let unconfigured = [&p.app_name, &p.project_slug, &p.ios_bundle_id, &p.android_bundle_id]
-        .iter()
-        .all(|f| f.trim().is_empty());
+    let unconfigured = [
+        &p.app_name,
+        &p.project_slug,
+        &p.ios_bundle_id,
+        &p.android_bundle_id,
+    ]
+    .iter()
+    .all(|f| f.trim().is_empty());
     let d = detect_identity(dir);
     let mut changed = false;
     for (field, found) in [
@@ -399,7 +498,11 @@ pub(super) fn seed_identity(p: &mut ProjectState, dir: &std::path::Path) -> bool
 /// `build_number.txt` (last iOS build used), `Dioxus.toml` (last Android
 /// versionCode used), and the global profile if it fits this app.
 /// Returns whether anything changed.
-pub(super) fn seed_release_fields(p: &mut ProjectState, dir: &std::path::Path, settings: &Settings) -> bool {
+pub(super) fn seed_release_fields(
+    p: &mut ProjectState,
+    dir: &std::path::Path,
+    settings: &Settings,
+) -> bool {
     let mut changed = false;
     let toml = std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default();
 
@@ -421,7 +524,9 @@ pub(super) fn seed_release_fields(p: &mut ProjectState, dir: &std::path::Path, s
         changed = true;
     }
     if p.android_version_code == 0 {
-        let last = toml_value(&toml, "version_code").and_then(|v| v.parse::<u32>().ok()).unwrap_or(0);
+        let last = toml_value(&toml, "version_code")
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0);
         p.android_version_code = last + 1;
         changed = true;
     }
@@ -481,15 +586,30 @@ mod tests {
 
     #[test]
     fn classifies_profile_kinds() {
-        let dev = PROFILE.replace("<key>get-task-allow</key>\n        <false/>", "<key>get-task-allow</key>\n        <true/>");
-        assert_eq!(read_profile(&write_profile("dev", &dev)).unwrap().kind, ProfileKind::Development);
-        let adhoc = PROFILE.replace("<key>Name</key>", "<key>ProvisionedDevices</key><array><string>x</string></array><key>Name</key>");
-        assert_eq!(read_profile(&write_profile("adhoc", &adhoc)).unwrap().kind, ProfileKind::AdHoc);
+        let dev = PROFILE.replace(
+            "<key>get-task-allow</key>\n        <false/>",
+            "<key>get-task-allow</key>\n        <true/>",
+        );
+        assert_eq!(
+            read_profile(&write_profile("dev", &dev)).unwrap().kind,
+            ProfileKind::Development
+        );
+        let adhoc = PROFILE.replace(
+            "<key>Name</key>",
+            "<key>ProvisionedDevices</key><array><string>x</string></array><key>Name</key>",
+        );
+        assert_eq!(
+            read_profile(&write_profile("adhoc", &adhoc)).unwrap().kind,
+            ProfileKind::AdHoc
+        );
     }
 
     #[test]
     fn installs_a_profile_under_its_uuid() {
-        let body = PROFILE.replace("<key>Name</key>", "<key>UUID</key>\n    <string>0bc1-test-uuid</string>\n    <key>Name</key>");
+        let body = PROFILE.replace(
+            "<key>Name</key>",
+            "<key>UUID</key>\n    <string>0bc1-test-uuid</string>\n    <key>Name</key>",
+        );
         let folder = std::env::temp_dir().join("shipscreen-test-profiles");
         let _ = std::fs::remove_dir_all(&folder);
         let path = install_profile_in(&folder, body.as_bytes()).unwrap();
@@ -509,8 +629,15 @@ mod tests {
     #[test]
     fn checks_team_against_identity() {
         let info = read_profile(&write_profile("team", PROFILE)).unwrap();
-        let checks = profile_checks(&info, "com.acme.app", "Apple Distribution: Jane (ZZ99ZZ99ZZ)");
-        let team = checks.iter().find(|c| c.label == "Same team as signing identity").unwrap();
+        let checks = profile_checks(
+            &info,
+            "com.acme.app",
+            "Apple Distribution: Jane (ZZ99ZZ99ZZ)",
+        );
+        let team = checks
+            .iter()
+            .find(|c| c.label == "Same team as signing identity")
+            .unwrap();
         assert!(!team.ok);
     }
 
@@ -559,20 +686,25 @@ mod tests {
         let mut all = Vec::new();
         for (locale, play) in [("en-US", "en-US"), ("zh-Hans", "zh-CN")] {
             for screen in 1..=2 {
-                all.extend(
-                    resize_to_targets(&png, screen, locale, play, &targets)
-                        .unwrap(),
-                );
+                all.extend(resize_to_targets(&png, screen, locale, play, &targets).unwrap());
             }
         }
         // 2 languages × (2 phone + 1 feature graphic), all distinct files in the project.
         assert_eq!(all.len(), 6);
         let paths: std::collections::HashSet<_> = all.iter().map(|(_, p)| p.clone()).collect();
         assert_eq!(paths.len(), 6);
-        assert!(paths.iter().all(|p| p.starts_with(&android_root) && p.exists()));
-        assert!(android_root.join("zh-CN/images/phoneScreenshots/02.png").exists());
-        assert!(android_root.join("en-US/images/featureGraphic.png").exists());
-        assert!(all.iter().all(|(l, _)| l.contains("[en-US]") || l.contains("[zh-Hans]")));
+        assert!(paths
+            .iter()
+            .all(|p| p.starts_with(&android_root) && p.exists()));
+        assert!(android_root
+            .join("zh-CN/images/phoneScreenshots/02.png")
+            .exists());
+        assert!(android_root
+            .join("en-US/images/featureGraphic.png")
+            .exists());
+        assert!(all
+            .iter()
+            .all(|(l, _)| l.contains("[en-US]") || l.contains("[zh-Hans]")));
     }
 
     #[test]
@@ -595,25 +727,50 @@ mod tests {
         let out = resize_to_targets(&png, 1, "en-US", "en-US", &targets).unwrap();
         // Only the two ticked desktop sizes — no iOS or Android files.
         assert_eq!(out.len(), 2);
-        assert!(out.iter().all(|(l, _)| l.starts_with("Desktop ") && l.contains("[en-US]")));
+        assert!(out
+            .iter()
+            .all(|(l, _)| l.starts_with("Desktop ") && l.contains("[en-US]")));
         let mac = project.join("fastlane/screenshots/desktop/en-US/desktop_mac-01.png");
-        assert_eq!((image::open(&mac).unwrap().width(), image::open(&mac).unwrap().height()), (1280, 800));
+        assert_eq!(
+            (
+                image::open(&mac).unwrap().width(),
+                image::open(&mac).unwrap().height()
+            ),
+            (1280, 800)
+        );
         let wide = project.join("fastlane/screenshots/desktop/en-US/desktop_wide-01.png");
-        assert_eq!((image::open(&wide).unwrap().width(), image::open(&wide).unwrap().height()), (1920, 1080));
+        assert_eq!(
+            (
+                image::open(&wide).unwrap().width(),
+                image::open(&wide).unwrap().height()
+            ),
+            (1920, 1080)
+        );
     }
 
     #[test]
     fn android_release_script_takes_signing_from_the_environment() {
         let script = script_android_release("Nahw", "nahw", "com.example.nahw", "1.0.0", 6);
-        assert!(!script.contains("Salma"), "no password in the generated script");
+        assert!(
+            !script.contains("Salma"),
+            "no password in the generated script"
+        );
         assert!(!script.contains("mayorana-release.keystore"));
         assert!(script.contains(r#"KEY_ALIAS="${ANDROID_KEY_ALIAS:-nahw}""#));
         assert!(script.contains(r#"KEYSTORE_PATH="${ANDROID_KEYSTORE_PATH:-}""#));
         // The template is format!-escaped bash; make sure it still parses.
         let path = std::env::temp_dir().join("shipscreen-test-android-release.sh");
         std::fs::write(&path, &script).unwrap();
-        let check = std::process::Command::new("bash").arg("-n").arg(&path).output().unwrap();
-        assert!(check.status.success(), "{}", String::from_utf8_lossy(&check.stderr));
+        let check = std::process::Command::new("bash")
+            .arg("-n")
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(
+            check.status.success(),
+            "{}",
+            String::from_utf8_lossy(&check.stderr)
+        );
     }
 
     #[test]
@@ -621,7 +778,11 @@ mod tests {
         let dir = std::env::temp_dir().join("shipscreen-test-detect");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("target/dx/tafseel-quran/release/ios")).unwrap();
-        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"tafseel-quran\"\nversion = \"1.1.0\"\n").unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"tafseel-quran\"\nversion = \"1.1.0\"\n",
+        )
+        .unwrap();
         std::fs::write(
             dir.join("Dioxus.toml"),
             "[application]\nname = \"TafseelQuran\"\n\n[mobile]\ntitle = \"Tafseel\"\nbundle_identifier = \"com.mayorana.tafseel\"\n\n\
@@ -636,17 +797,27 @@ mod tests {
         p.version = "1.0".into();
         assert!(seed_identity(&mut p, &dir));
         assert_eq!(p.app_name, "Tafseel");
-        assert_eq!(p.project_slug, "tafseel-quran", "dx's folder, not Dioxus.toml's name");
+        assert_eq!(
+            p.project_slug, "tafseel-quran",
+            "dx's folder, not Dioxus.toml's name"
+        );
         assert_eq!(p.ios_bundle_id, "com.mayorana.tafseel");
         assert_eq!(p.android_bundle_id, "com.mayorana.tafseel");
-        assert_eq!(p.platform_type, PlatformType::Ios, "only iOS was ever built");
+        assert_eq!(
+            p.platform_type,
+            PlatformType::Ios,
+            "only iOS was ever built"
+        );
         assert_eq!(p.version, "1.1");
 
         // Once set, nothing is overwritten.
         p.app_name = "Tafseel Quran".into();
         p.version = "1.2".into();
         assert!(!seed_identity(&mut p, &dir));
-        assert_eq!((p.app_name.as_str(), p.version.as_str()), ("Tafseel Quran", "1.2"));
+        assert_eq!(
+            (p.app_name.as_str(), p.version.as_str()),
+            ("Tafseel Quran", "1.2")
+        );
     }
 
     #[test]
@@ -655,7 +826,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("target/dx/nahw/release/android/app/app")).unwrap();
         std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"nahw\"\n").unwrap();
-        std::fs::write(dir.join("Dioxus.toml"), "[bundle]\nidentifier = \"com.example.nahw\"\n").unwrap();
+        std::fs::write(
+            dir.join("Dioxus.toml"),
+            "[bundle]\nidentifier = \"com.example.nahw\"\n",
+        )
+        .unwrap();
         std::fs::write(
             dir.join("build_ios_distribution.sh"),
             "#!/bin/bash\nAPP_NAME=\"Nahw\"\nVERSION=\"2.0.1\"\nBUNDLE_ID=\"com.mayorana.tafseel.nahw\"\nDX=\"${DX:-dx}\"\n",
@@ -668,11 +843,18 @@ mod tests {
         .unwrap();
         let d = detect_identity(&dir);
         assert_eq!(d.app_name.as_deref(), Some("Nahw"));
-        assert_eq!(d.ios_bundle_id.as_deref(), Some("com.mayorana.tafseel.nahw"));
+        assert_eq!(
+            d.ios_bundle_id.as_deref(),
+            Some("com.mayorana.tafseel.nahw")
+        );
         assert_eq!(d.android_bundle_id.as_deref(), Some("com.mayorana.nahw"));
         assert_eq!(d.version.as_deref(), Some("2.0.1"));
         assert!(d.has_ios && d.has_android);
-        assert_eq!(shell_var("DX=\"${DX:-dx}\"", "DX"), None, "not a plain value");
+        assert_eq!(
+            shell_var("DX=\"${DX:-dx}\"", "DX"),
+            None,
+            "not a plain value"
+        );
     }
 
     #[test]
@@ -682,13 +864,38 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let mine = "#!/bin/bash\n# my tuned script\nDISPLAY_NAME=\"Tafseel\"\n";
         std::fs::write(dir.join("build_ios_distribution.sh"), mine).unwrap();
-        let written = ensure_build_scripts(&dir, "Tafseel", "tafseel-quran", "com.a", "com.a", "id", "", "1.1", 13, 1);
+        let written = ensure_build_scripts(
+            &dir,
+            "Tafseel",
+            "tafseel-quran",
+            "com.a",
+            "com.a",
+            "id",
+            "",
+            "1.1",
+            13,
+            1,
+        );
         assert!(!written.contains(&"build_ios_distribution.sh".to_string()));
-        assert_eq!(std::fs::read_to_string(dir.join("build_ios_distribution.sh")).unwrap(), mine);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("build_ios_distribution.sh")).unwrap(),
+            mine
+        );
         // The ones it wrote carry the marker, so they're replaced next time.
         let apk = std::fs::read_to_string(dir.join("build_apk.sh")).unwrap();
         assert!(apk.starts_with(&format!("#!/bin/bash\n{SCRIPT_MARKER}\n")));
-        let again = ensure_build_scripts(&dir, "Tafseel", "tafseel-quran", "com.a", "com.a", "id", "", "1.1", 14, 2);
+        let again = ensure_build_scripts(
+            &dir,
+            "Tafseel",
+            "tafseel-quran",
+            "com.a",
+            "com.a",
+            "id",
+            "",
+            "1.1",
+            14,
+            2,
+        );
         assert_eq!(again.len(), 3);
     }
 
@@ -697,7 +904,11 @@ mod tests {
         let dir = std::env::temp_dir().join("shipscreen-test-seed");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("build_number.txt"), "14\n").unwrap();
-        std::fs::write(dir.join("Dioxus.toml"), "[android]\nversion_code = 36\nversion_name = \"2.1.0\"\n").unwrap();
+        std::fs::write(
+            dir.join("Dioxus.toml"),
+            "[android]\nversion_code = 36\nversion_name = \"2.1.0\"\n",
+        )
+        .unwrap();
         let mut p = ProjectState::with_defaults();
         assert!(seed_release_fields(&mut p, &dir, &Settings::default()));
         assert_eq!(p.version, "2.1.0");

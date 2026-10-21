@@ -567,14 +567,18 @@ impl BuildInputs {
         if !valid_version(&self.version) {
             return Some("Set a valid version (e.g. 1.2.0) in the Version step.".into());
         }
-        if script_name.contains("ios") && (self.identity.trim().is_empty() || self.profile.trim().is_empty()) {
+        if script_name.contains("ios")
+            && (self.identity.trim().is_empty() || self.profile.trim().is_empty())
+        {
             return Some(
                 "Apple Identity and Provisioning Profile are required for iOS. Set them in the Accounts step.".into(),
             );
         }
         // Resolved afresh: the project's .env may have changed since the card was drawn.
         if script_name == "build_android_release.sh"
-            && !resolve_android_signing(&self.dir, &self.keystore_setting, &self.alias).0.ok()
+            && !resolve_android_signing(&self.dir, &self.keystore_setting, &self.alias)
+                .0
+                .ok()
         {
             return Some(
                 "The Android upload key isn't set up. Choose or create it in the Accounts step, under Android upload key."
@@ -650,10 +654,17 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     // 2. Everything the build needs from the environment: the project's
     //    .env, the upload key (team settings + password store) and Java.
     let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
-    let mut child_env: Vec<(String, String)> = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let mut child_env: Vec<(String, String)> =
+        env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     let (signing, password) = resolve_android_signing(&dir, &i.keystore_setting, &i.alias);
-    if let (false, Some(ks)) = (env.contains_key("ANDROID_KEYSTORE_PATH"), signing.keystore.clone()) {
-        child_env.push(("ANDROID_KEYSTORE_PATH".into(), ks.to_string_lossy().to_string()));
+    if let (false, Some(ks)) = (
+        env.contains_key("ANDROID_KEYSTORE_PATH"),
+        signing.keystore.clone(),
+    ) {
+        child_env.push((
+            "ANDROID_KEYSTORE_PATH".into(),
+            ks.to_string_lossy().to_string(),
+        ));
     }
     if !env.contains_key("ANDROID_KEY_ALIAS") {
         child_env.push(("ANDROID_KEY_ALIAS".into(), signing.alias.clone()));
@@ -664,21 +675,37 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     // Gradle needs a JDK it can run on: the one picked in the Java card,
     // else the project's JAVA_HOME, else the best installed — never one
     // too old or too new for the project's Gradle.
-    let env_java = env.get("JAVA_HOME").cloned().or_else(|| std::env::var("JAVA_HOME").ok());
+    let env_java = env
+        .get("JAVA_HOME")
+        .cloned()
+        .or_else(|| std::env::var("JAVA_HOME").ok());
     let (jdk, notes) = if script_name.contains("ios") {
         (None, Vec::new())
     } else {
         let dir = dir.clone();
-        tokio::task::spawn_blocking(move || java::for_project(&dir, env_java.as_deref())).await.unwrap_or_default()
+        tokio::task::spawn_blocking(move || java::for_project(&dir, env_java.as_deref()))
+            .await
+            .unwrap_or_default()
     };
     for n in notes {
         log.push(format!("⚠️  {n}"));
     }
     if let Some(j) = jdk {
-        log.push(format!("☕ Java {} ({}) · {}", j.version, j.source, j.home.display()));
-        let path = env.get("PATH").map(Into::into).or_else(|| std::env::var_os("PATH")).unwrap_or_default();
-        let path = std::env::join_paths(std::iter::once(j.home.join("bin")).chain(std::env::split_paths(&path)))
-            .unwrap_or(path);
+        log.push(format!(
+            "☕ Java {} ({}) · {}",
+            j.version,
+            j.source,
+            j.home.display()
+        ));
+        let path = env
+            .get("PATH")
+            .map(Into::into)
+            .or_else(|| std::env::var_os("PATH"))
+            .unwrap_or_default();
+        let path = std::env::join_paths(
+            std::iter::once(j.home.join("bin")).chain(std::env::split_paths(&path)),
+        )
+        .unwrap_or(path);
         child_env.push(("JAVA_HOME".into(), j.home.to_string_lossy().to_string()));
         child_env.push(("PATH".into(), path.to_string_lossy().to_string()));
     }
@@ -689,7 +716,13 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     let own_script = script_path.exists() && !created.contains(&script_name);
     match android_build::Kind::from_script(&script_name).filter(|_| !own_script) {
         Some(kind) => {
-            let find = |key: &str| child_env.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+            let find = |key: &str| {
+                child_env
+                    .iter()
+                    .rev()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v.clone())
+            };
             let job = android_build::Job {
                 kind,
                 app_name: i.app_name.clone(),
@@ -847,7 +880,11 @@ pub(super) fn generate_ai(ws: Ws) {
         }
 
         let (frame_w, frame_h): (u32, u32) = if desktop { (1920, 1200) } else { (1290, 2796) };
-        let device = if desktop { "modern laptop computer".to_string() } else { phone_style.clone() };
+        let device = if desktop {
+            "modern laptop computer".to_string()
+        } else {
+            phone_style.clone()
+        };
         let mut all_outputs: Vec<(String, PathBuf)> = Vec::new();
 
         // Each locale has its own images — process independently
@@ -858,7 +895,11 @@ pub(super) fn generate_ai(ws: Ws) {
             // doesn't leave old ones behind in the fastlane folder.
             if !targets.android.is_empty() {
                 let _ = std::fs::remove_dir_all(
-                    targets.android_root.join(stores::play_language(locale)).join("images").join("phoneScreenshots"),
+                    targets
+                        .android_root
+                        .join(stores::play_language(locale))
+                        .join("images")
+                        .join("phoneScreenshots"),
                 );
             }
             if !targets.desktop.is_empty() {
@@ -973,8 +1014,11 @@ pub(super) fn generate_ai(ws: Ws) {
                             format!("Resize failed for [{locale2}] screen {screen_num}: {e}")
                         })?;
 
-                        let preview =
-                            paths.iter().find(|(l, _)| l.contains("6.7")).or_else(|| paths.first()).map(|(_, p)| {
+                        let preview = paths
+                            .iter()
+                            .find(|(l, _)| l.contains("6.7"))
+                            .or_else(|| paths.first())
+                            .map(|(_, p)| {
                                 urlencoding::encode(&p.to_string_lossy().to_string()).into_owned()
                             });
 
@@ -1024,10 +1068,18 @@ pub(super) fn generate_ai(ws: Ws) {
 // ---- Manual Generate ----
 /// The languages selected for generation that have no source screens yet.
 pub(super) fn missing_sources(p: &ProjectState) -> Option<String> {
-    let empty: Vec<&str> =
-        p.locales.iter().filter(|loc| p.sources_for(loc).is_empty()).map(|l| l.as_str()).collect();
-    (!empty.is_empty())
-        .then(|| format!("No images for locale(s): {}. Add images in each language tab.", empty.join(", ")))
+    let empty: Vec<&str> = p
+        .locales
+        .iter()
+        .filter(|loc| p.sources_for(loc).is_empty())
+        .map(|l| l.as_str())
+        .collect();
+    (!empty.is_empty()).then(|| {
+        format!(
+            "No images for locale(s): {}. Add images in each language tab.",
+            empty.join(", ")
+        )
+    })
 }
 
 /// Manual screenshots for every selected language: each source screen on the
@@ -1063,14 +1115,20 @@ pub(super) async fn generate_manual_images(
         // doesn't leave old ones behind in the fastlane folder.
         if !targets.android.is_empty() {
             let _ = std::fs::remove_dir_all(
-                targets.android_root.join(stores::play_language(locale)).join("images").join("phoneScreenshots"),
+                targets
+                    .android_root
+                    .join(stores::play_language(locale))
+                    .join("images")
+                    .join("phoneScreenshots"),
             );
         }
         if !targets.desktop.is_empty() {
             let _ = std::fs::remove_dir_all(targets.desktop_dir.join(locale));
         }
         let texts = p.texts_for(locale);
-        log.push(format!("─── Generating locale: {locale} ({total} image(s)) ───"));
+        log.push(format!(
+            "─── Generating locale: {locale} ({total} image(s)) ───"
+        ));
 
         for (idx, src) in srcs.iter().enumerate() {
             let screen_num = idx + 1;
@@ -1081,82 +1139,122 @@ pub(super) async fn generate_manual_images(
             let locale2 = locale.clone();
             let targets2 = targets.clone();
             let play_locale = stores::play_language(locale).to_string();
-            let bg_color = if idx % 2 == 0 { primary_rgba } else { secondary_rgba };
+            let bg_color = if idx % 2 == 0 {
+                primary_rgba
+            } else {
+                secondary_rgba
+            };
             let (title, subtitle) = texts.get(idx).cloned().unwrap_or_default();
 
-        let cpu = tokio::task::spawn_blocking(
-            move || -> Result<(Vec<(String, PathBuf)>, Option<String>), String> {
-                let (w, h): (u32, u32) = if desktop { (2560, 1600) } else { (1290, 2796) };
-                let font = FontRef::try_from_slice(ROBOTO_FONT).expect("font");
+            let cpu = tokio::task::spawn_blocking(
+                move || -> Result<(Vec<(String, PathBuf)>, Option<String>), String> {
+                    let (w, h): (u32, u32) = if desktop { (2560, 1600) } else { (1290, 2796) };
+                    let font = FontRef::try_from_slice(ROBOTO_FONT).expect("font");
 
-                let screenshot_bytes = std::fs::read(&src2)
-                    .map_err(|e| format!("Failed to read image {screen_num}: {e}"))?;
-                let screenshot = image::load_from_memory(&screenshot_bytes)
-                    .map_err(|e| format!("Failed to decode image {screen_num}: {e}"))?
-                    .to_rgba8();
+                    let screenshot_bytes = std::fs::read(&src2)
+                        .map_err(|e| format!("Failed to read image {screen_num}: {e}"))?;
+                    let screenshot = image::load_from_memory(&screenshot_bytes)
+                        .map_err(|e| format!("Failed to decode image {screen_num}: {e}"))?
+                        .to_rgba8();
 
-                let mut img = RgbaImage::from_pixel(w, h, bg_color);
-                let text_color = get_contrast_color(bg_color);
-                // (title size, title y, subtitle size, subtitle y)
-                let (ts, ty, ss, sy) = if desktop { (110.0, 90, 56.0, 230) } else { (120.0, 200, 60.0, 350) };
-                if !title.is_empty() {
-                    draw_centered_text(&mut img, &font, &title, PxScale::from(ts), text_color, ty);
-                }
-                if !subtitle.is_empty() {
-                    draw_centered_text(&mut img, &font, &subtitle, PxScale::from(ss), text_color, sy);
-                }
+                    let mut img = RgbaImage::from_pixel(w, h, bg_color);
+                    let text_color = get_contrast_color(bg_color);
+                    // (title size, title y, subtitle size, subtitle y)
+                    let (ts, ty, ss, sy) = if desktop {
+                        (110.0, 90, 56.0, 230)
+                    } else {
+                        (120.0, 200, 60.0, 350)
+                    };
+                    if !title.is_empty() {
+                        draw_centered_text(
+                            &mut img,
+                            &font,
+                            &title,
+                            PxScale::from(ts),
+                            text_color,
+                            ty,
+                        );
+                    }
+                    if !subtitle.is_empty() {
+                        draw_centered_text(
+                            &mut img,
+                            &font,
+                            &subtitle,
+                            PxScale::from(ss),
+                            text_color,
+                            sy,
+                        );
+                    }
 
-                if desktop {
-                    // Fit the whole window below the captions, keeping
-                    // its proportions — a desktop screenshot can be any shape.
-                    let (area_x, area_y) = (200u32, 360u32);
-                    let (area_w, area_h) = (w - 2 * area_x, h - area_y - 120);
-                    let scale = (area_w as f64 / screenshot.width() as f64)
-                        .min(area_h as f64 / screenshot.height() as f64);
-                    let fit_w = ((screenshot.width() as f64 * scale) as u32).max(1);
-                    let fit_h = ((screenshot.height() as f64 * scale) as u32).max(1);
-                    let resized = image::imageops::resize(&screenshot, fit_w, fit_h, FilterType::Lanczos3);
-                    image::imageops::overlay(
-                        &mut img,
-                        &resized,
-                        (area_x + (area_w - fit_w) / 2) as i64,
-                        (area_y + (area_h - fit_h) / 2) as i64,
-                    );
-                } else {
-                    let phone_w = (w as f64 * 0.7) as u32;
-                    let phone_h = (phone_w as f64 * 2.16) as u32;
-                    let phone_x = (w - phone_w) / 2;
-                    let phone_y = h - phone_h - 150;
-                    let resized = image::imageops::resize(&screenshot, phone_w, phone_h, FilterType::Lanczos3);
-                    image::imageops::overlay(&mut img, &resized, phone_x as i64, phone_y as i64);
-                }
+                    if desktop {
+                        // Fit the whole window below the captions, keeping
+                        // its proportions — a desktop screenshot can be any shape.
+                        let (area_x, area_y) = (200u32, 360u32);
+                        let (area_w, area_h) = (w - 2 * area_x, h - area_y - 120);
+                        let scale = (area_w as f64 / screenshot.width() as f64)
+                            .min(area_h as f64 / screenshot.height() as f64);
+                        let fit_w = ((screenshot.width() as f64 * scale) as u32).max(1);
+                        let fit_h = ((screenshot.height() as f64 * scale) as u32).max(1);
+                        let resized = image::imageops::resize(
+                            &screenshot,
+                            fit_w,
+                            fit_h,
+                            FilterType::Lanczos3,
+                        );
+                        image::imageops::overlay(
+                            &mut img,
+                            &resized,
+                            (area_x + (area_w - fit_w) / 2) as i64,
+                            (area_y + (area_h - fit_h) / 2) as i64,
+                        );
+                    } else {
+                        let phone_w = (w as f64 * 0.7) as u32;
+                        let phone_h = (phone_w as f64 * 2.16) as u32;
+                        let phone_x = (w - phone_w) / 2;
+                        let phone_y = h - phone_h - 150;
+                        let resized = image::imageops::resize(
+                            &screenshot,
+                            phone_w,
+                            phone_h,
+                            FilterType::Lanczos3,
+                        );
+                        image::imageops::overlay(
+                            &mut img,
+                            &resized,
+                            phone_x as i64,
+                            phone_y as i64,
+                        );
+                    }
 
-                let composited_bytes = {
-                    let mut buf = std::io::Cursor::new(Vec::new());
-                    img.write_to(&mut buf, image::ImageFormat::Png)
-                        .map_err(|e| format!("Failed to encode image {screen_num}: {e}"))?;
-                    buf.into_inner()
-                };
+                    let composited_bytes = {
+                        let mut buf = std::io::Cursor::new(Vec::new());
+                        img.write_to(&mut buf, image::ImageFormat::Png)
+                            .map_err(|e| format!("Failed to encode image {screen_num}: {e}"))?;
+                        buf.into_inner()
+                    };
 
-                let paths = resize_to_targets(
-                    &composited_bytes,
-                    screen_num,
-                    &locale2,
-                    &play_locale,
-                    &targets2,
-                )
-                .map_err(|e| {
-                    format!("Resize failed for [{locale2}] screen {screen_num}: {e}")
-                })?;
+                    let paths = resize_to_targets(
+                        &composited_bytes,
+                        screen_num,
+                        &locale2,
+                        &play_locale,
+                        &targets2,
+                    )
+                    .map_err(|e| {
+                        format!("Resize failed for [{locale2}] screen {screen_num}: {e}")
+                    })?;
 
-                let preview =
-                    paths.iter().find(|(l, _)| l.contains("6.7")).or_else(|| paths.first()).map(|(_, p)| {
-                        urlencoding::encode(&p.to_string_lossy().to_string()).into_owned()
-                    });
+                    let preview = paths
+                        .iter()
+                        .find(|(l, _)| l.contains("6.7"))
+                        .or_else(|| paths.first())
+                        .map(|(_, p)| {
+                            urlencoding::encode(&p.to_string_lossy().to_string()).into_owned()
+                        });
 
-                Ok((paths, preview))
-            },
-        );
+                    Ok((paths, preview))
+                },
+            );
 
             let (paths, preview) = match cpu.await {
                 Ok(Ok(v)) => v,
@@ -1173,7 +1271,10 @@ pub(super) async fn generate_manual_images(
             all_outputs.extend(paths);
         }
     }
-    log.push(format!("Done! Manual screenshots generated for {} locale(s).", p.locales.len()));
+    log.push(format!(
+        "Done! Manual screenshots generated for {} locale(s).",
+        p.locales.len()
+    ));
     Ok(all_outputs)
 }
 
@@ -1197,7 +1298,8 @@ pub(super) fn generate_manual(ws: Ws) {
             p.output_paths.clear();
             p.clone()
         };
-        let preview = move |enc: String| proj.write().generated_urls.push(format!("/localimg/{enc}"));
+        let preview =
+            move |enc: String| proj.write().generated_urls.push(format!("/localimg/{enc}"));
         match generate_manual_images(proj_dir.clone(), snapshot, log_lines.into(), preview).await {
             Ok(outputs) => {
                 let mut p = proj.write();
@@ -1246,7 +1348,13 @@ fn find_bash() -> Option<PathBuf> {
         .filter_map(std::env::var_os)
         .flat_map(|base| {
             let base = PathBuf::from(base);
-            [base.join("Git").join("bin").join("bash.exe"), base.join("Programs").join("Git").join("bin").join("bash.exe")]
+            [
+                base.join("Git").join("bin").join("bash.exe"),
+                base.join("Programs")
+                    .join("Git")
+                    .join("bin")
+                    .join("bash.exe"),
+            ]
         })
         .find(|p| p.is_file())
 }
@@ -1277,7 +1385,9 @@ pub(super) async fn stream_command(
         let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
-                let _ = tx.send(Msg::Done(Err(format!("Could not start {name_for_thread}: {e}"))));
+                let _ = tx.send(Msg::Done(Err(format!(
+                    "Could not start {name_for_thread}: {e}"
+                ))));
                 return;
             }
         };
@@ -1297,7 +1407,10 @@ pub(super) async fn stream_command(
         }
         let result = match child.wait() {
             Ok(s) if s.success() => Ok(()),
-            Ok(s) => Err(format!("{name_for_thread} exited with code {}", s.code().unwrap_or(-1))),
+            Ok(s) => Err(format!(
+                "{name_for_thread} exited with code {}",
+                s.code().unwrap_or(-1)
+            )),
             Err(e) => Err(format!("wait: {e}")),
         };
         let _ = tx.send(Msg::Done(result));
@@ -1459,7 +1572,9 @@ pub(super) fn upload_ipa(ws: Ws) {
     let dir = ws.dir();
     ws.show_job(JobKind::AppStoreBuild);
     let Some(ipa) = ws.artifacts.read().ipa.clone() else {
-        state.set(JobState::Failed("No IPA yet — build one in the Build step.".into()));
+        state.set(JobState::Failed(
+            "No IPA yet — build one in the Build step.".into(),
+        ));
         return;
     };
     state.set(JobState::Running("Uploading IPA…".into()));
@@ -1521,7 +1636,13 @@ fn ios_build_to_submit(ws: Ws) -> Option<(String, u32)> {
         .iter()
         .find(|r| r.platform == "ios" && r.action == "Uploaded build")
         .map(|r| (r.version.clone(), r.build));
-    last_uploaded.or_else(|| ws.artifacts.read().ipa.as_ref().and_then(|a| stores::ipa_version(&a.path)))
+    last_uploaded.or_else(|| {
+        ws.artifacts
+            .read()
+            .ipa
+            .as_ref()
+            .and_then(|a| stores::ipa_version(&a.path))
+    })
 }
 
 // ---- iOS: attach the build and submit for review ----
@@ -1534,10 +1655,14 @@ pub(super) fn submit_for_review(ws: Ws) {
     let exempt = ws.proj.read().exempt_encryption;
     ws.show_job(JobKind::AppStoreReview);
     let Some((version, build)) = ios_build_to_submit(ws) else {
-        state.set(JobState::Failed("No build to submit — upload an IPA first.".into()));
+        state.set(JobState::Failed(
+            "No build to submit — upload an IPA first.".into(),
+        ));
         return;
     };
-    state.set(JobState::Running(format!("Submitting {version} ({build})…")));
+    state.set(JobState::Running(format!(
+        "Submitting {version} ({build})…"
+    )));
     log.set(Vec::new());
 
     ws.spawn(async move {
@@ -1605,7 +1730,9 @@ pub(super) fn release_aab(ws: Ws) {
     let p = ws.proj.read().clone();
     ws.show_job(JobKind::PlayRelease);
     let Some(aab) = ws.artifacts.read().aab.clone() else {
-        state.set(JobState::Failed("No AAB yet — build one in the Build step.".into()));
+        state.set(JobState::Failed(
+            "No AAB yet — build one in the Build step.".into(),
+        ));
         return;
     };
     let track = p.play_track.clone();
@@ -1617,7 +1744,12 @@ pub(super) fn release_aab(ws: Ws) {
         .iter()
         .filter_map(|l| {
             let text = p.store_texts.get(l)?.whats_new.trim().to_string();
-            (!text.is_empty()).then(|| (stores::play_language(l).to_string(), text.chars().take(500).collect()))
+            (!text.is_empty()).then(|| {
+                (
+                    stores::play_language(l).to_string(),
+                    text.chars().take(500).collect(),
+                )
+            })
         })
         .collect();
     state.set(JobState::Running(format!("Releasing to {track}…")));
@@ -1686,7 +1818,12 @@ pub(super) fn release_aab(ws: Ws) {
 
 /// New key + CSR → Apple Distribution certificate → .p12 in the keys folder
 /// and the login keychain, then select it as the signing identity.
-pub(super) fn create_distribution_certificate(ws: Ws, name: String, email: String, p12_password: String) {
+pub(super) fn create_distribution_certificate(
+    ws: Ws,
+    name: String,
+    email: String,
+    p12_password: String,
+) {
     let mut state = ws.cert_job;
     let mut settings = ws.settings;
     let dir = ws.dir();
@@ -1751,7 +1888,9 @@ pub(super) fn repair_profile(ws: Ws) {
     let bundle = ws.proj.read().ios_bundle_id.trim().to_string();
     let app_name = ws.proj.read().app_name.trim().to_string();
     if bundle.is_empty() {
-        state.set(JobState::Failed("Set the iOS bundle ID in the App step first.".into()));
+        state.set(JobState::Failed(
+            "Set the iOS bundle ID in the App step first.".into(),
+        ));
         return;
     }
     state.set(JobState::Running("Regenerating profile…".into()));
@@ -1794,7 +1933,11 @@ pub(super) fn repair_profile(ws: Ws) {
 // ---- What the stores currently show (Submit step) ----
 
 /// Lines for the Store status card: ("App Store" | "Google Play", text).
-pub(super) fn fetch_store_status(ws: Ws, mut out: Signal<Vec<(String, String)>>, mut state: Signal<JobState>) {
+pub(super) fn fetch_store_status(
+    ws: Ws,
+    mut out: Signal<Vec<(String, String)>>,
+    mut state: Signal<JobState>,
+) {
     let dir = ws.dir();
     let p = ws.proj.read().clone();
     state.set(JobState::Running("Asking the stores…".into()));
@@ -1810,7 +1953,10 @@ pub(super) fn fetch_store_status(ws: Ws, mut out: Signal<Vec<(String, String)>>,
             .await;
             match r {
                 Ok(v) if v.is_empty() => lines.push(("App Store".into(), "No versions yet".into())),
-                Ok(v) => lines.extend(v.into_iter().map(|(ver, st)| ("App Store".to_string(), format!("{ver} — {st}")))),
+                Ok(v) => lines.extend(
+                    v.into_iter()
+                        .map(|(ver, st)| ("App Store".to_string(), format!("{ver} — {st}"))),
+                ),
                 Err(e) => errors.push(format!("App Store: {e}")),
             }
         }
@@ -1824,8 +1970,13 @@ pub(super) fn fetch_store_status(ws: Ws, mut out: Signal<Vec<(String, String)>>,
             }
             .await;
             match r {
-                Ok(v) if v.is_empty() => lines.push(("Google Play".into(), "No releases on any track yet".into())),
-                Ok(v) => lines.extend(v.into_iter().map(|(t, s)| ("Google Play".to_string(), format!("{t}: {s}")))),
+                Ok(v) if v.is_empty() => {
+                    lines.push(("Google Play".into(), "No releases on any track yet".into()))
+                }
+                Ok(v) => lines.extend(
+                    v.into_iter()
+                        .map(|(t, s)| ("Google Play".to_string(), format!("{t}: {s}"))),
+                ),
                 Err(e) => errors.push(format!("Google Play: {e}")),
             }
         }

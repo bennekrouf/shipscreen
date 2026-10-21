@@ -32,7 +32,13 @@ fn project_field(
 }
 
 /// One line of a readiness checklist. `fix` names the step that resolves it.
-pub(super) fn check_row(ws: Ws, ok: bool, label: &str, detail: String, fix: Option<Step>) -> Element {
+pub(super) fn check_row(
+    ws: Ws,
+    ok: bool,
+    label: &str,
+    detail: String,
+    fix: Option<Step>,
+) -> Element {
     rsx! {
         li { class: if ok { "check-row check-ok" } else { "check-row check-bad" },
             span { class: "check-mark",
@@ -400,7 +406,10 @@ fn DoctorCard() -> Element {
         let platform = ws.proj.peek().platform_type.clone();
         let identity = ws.settings.peek().apple_identity.clone();
         spawn(async move {
-            let found = tokio::task::spawn_blocking(move || doctor::run(&dir, &platform, &identity)).await.unwrap_or_default();
+            let found =
+                tokio::task::spawn_blocking(move || doctor::run(&dir, &platform, &identity))
+                    .await
+                    .unwrap_or_default();
             items.set(Some(found));
         });
     });
@@ -502,7 +511,11 @@ fn JavaCard() -> Element {
             java::refresh();
         }
         spawn(async move {
-            jdks.set(Some(tokio::task::spawn_blocking(java::installed).await.unwrap_or_default()));
+            jdks.set(Some(
+                tokio::task::spawn_blocking(java::installed)
+                    .await
+                    .unwrap_or_default(),
+            ));
         });
     });
 
@@ -511,7 +524,11 @@ fn JavaCard() -> Element {
     use_effect(move || {
         if jdks().is_some() && installers.peek().is_none() {
             spawn(async move {
-                installers.set(Some(tokio::task::spawn_blocking(java::detect_installers).await.unwrap_or_default()));
+                installers.set(Some(
+                    tokio::task::spawn_blocking(java::detect_installers)
+                        .await
+                        .unwrap_or_default(),
+                ));
             });
         }
     });
@@ -522,16 +539,30 @@ fn JavaCard() -> Element {
     let list = jdks().unwrap_or_default();
     let recommended = java::recommend(&list, gradle);
     let major = java::install_major(gradle);
-    let options = installers().map(|i| java::install_options(java::current_os(), major, &i)).unwrap_or_default();
+    let options = installers()
+        .map(|i| java::install_options(java::current_os(), major, &i))
+        .unwrap_or_default();
     // What builds will really run on: the pick, unless Gradle can't run on it.
-    let chosen_jdk = list.iter().find(|j| !chosen.is_empty() && j.home.to_string_lossy() == chosen).cloned();
-    let chosen_problem = chosen_jdk.as_ref().and_then(|j| java::incompatibility(j, gradle));
+    let chosen_jdk = list
+        .iter()
+        .find(|j| !chosen.is_empty() && j.home.to_string_lossy() == chosen)
+        .cloned();
+    let chosen_problem = chosen_jdk
+        .as_ref()
+        .and_then(|j| java::incompatibility(j, gradle));
     let env_jdk = list.iter().find(|j| j.source == "JAVA_HOME").cloned();
     let (current, _) = java::pick_for_build(chosen_jdk, env_jdk, &list, gradle);
     let current = current.filter(|_| jdks().is_some());
     let label = |j: &java::Jdk| {
-        let problem = java::incompatibility(j, gradle).map(|p| format!(" — {p}")).unwrap_or_default();
-        format!("Java {} · {} · {}{problem}", j.version, j.source, j.home.display())
+        let problem = java::incompatibility(j, gradle)
+            .map(|p| format!(" — {p}"))
+            .unwrap_or_default();
+        format!(
+            "Java {} · {} · {}{problem}",
+            j.version,
+            j.source,
+            j.home.display()
+        )
     };
 
     rsx! {
@@ -881,13 +912,17 @@ pub(super) fn BuildStep() -> Element {
     };
 
     let artifact_line = |a: &Option<Artifact>, what: &str| match a {
-        Some(a) => rsx! { p { class: "artifact-line", title: "{a.path.display()}", {icon_check()} "{a.summary()}" } },
+        Some(a) => {
+            rsx! { p { class: "artifact-line", title: "{a.path.display()}", {icon_check()} "{a.summary()}" } }
+        }
         None => rsx! { p { class: "artifact-line artifact-none", "No {what} built yet" } },
     };
-    let next_line = |label: String| rsx! {
-        div { class: "next-build",
-            span { "{label}" }
-            button { class: "btn btn-sm", onclick: move |_| ws.go(Step::Version), "Change" }
+    let next_line = |label: String| {
+        rsx! {
+            div { class: "next-build",
+                span { "{label}" }
+                button { class: "btn btn-sm", onclick: move |_| ws.go(Step::Version), "Change" }
+            }
         }
     };
 
@@ -1247,8 +1282,16 @@ pub(super) fn ScreenshotsStep() -> Element {
     let plat = p.platform_type.clone();
 
     let phase = gen_phase.read().clone();
-    let is_busy = matches!(phase, AppPhase::GeneratingAi | AppPhase::GeneratingManual | AppPhase::Resizing);
-    let missing: Vec<String> = p.locales.iter().filter(|l| p.sources_for(l).is_empty()).map(|l| locale_name(l)).collect();
+    let is_busy = matches!(
+        phase,
+        AppPhase::GeneratingAi | AppPhase::GeneratingManual | AppPhase::Resizing
+    );
+    let missing: Vec<String> = p
+        .locales
+        .iter()
+        .filter(|l| p.sources_for(l).is_empty())
+        .map(|l| locale_name(l))
+        .collect();
 
     rsx! {
         if !missing.is_empty() {
@@ -1441,7 +1484,13 @@ fn store_text_field(
     get: fn(&StoreText) -> &String,
     set: fn(&mut StoreText, String),
 ) -> Element {
-    let value = ws.proj.read().store_texts.get(&locale).map(|t| get(t).clone()).unwrap_or_default();
+    let value = ws
+        .proj
+        .read()
+        .store_texts
+        .get(&locale)
+        .map(|t| get(t).clone())
+        .unwrap_or_default();
     let used = value.chars().count();
     rsx! {
         div { class: "settings-field",
@@ -1484,15 +1533,23 @@ pub(super) fn MetadataStep() -> Element {
     let plat = p.platform_type.clone();
     let active = {
         let a = active_locale.read().clone();
-        if p.locales.contains(&a) { a } else { p.locales.first().cloned().unwrap_or_else(|| "en-US".into()) }
+        if p.locales.contains(&a) {
+            a
+        } else {
+            p.locales.first().cloned().unwrap_or_else(|| "en-US".into())
+        }
     };
     let complete = |loc: &String| {
         p.store_texts.get(loc).is_some_and(|t| {
-            !t.description.trim().is_empty() && (!plat.has_android() || !t.short_description.trim().is_empty())
+            !t.description.trim().is_empty()
+                && (!plat.has_android() || !t.short_description.trim().is_empty())
         })
     };
     let first = p.locales.first().cloned().unwrap_or_default();
-    let can_copy = active != first && p.store_texts.get(&first).is_some_and(|t| *t != StoreText::default());
+    let can_copy = active != first
+        && p.store_texts
+            .get(&first)
+            .is_some_and(|t| *t != StoreText::default());
     let title_too_long = p.app_name.chars().count() > 30;
 
     rsx! {
@@ -1631,7 +1688,13 @@ fn build_check_row(ws: Ws, checks: Vec<CredCheck>) -> Element {
         None => "Signer, identifiers, version and target all fine".to_string(),
         Some(c) => format!("{}: {}", c.label, c.detail),
     };
-    check_row(ws, bad.is_empty() && !checks.is_empty(), "Build checks", detail, Some(Step::Build))
+    check_row(
+        ws,
+        bad.is_empty() && !checks.is_empty(),
+        "Build checks",
+        detail,
+        Some(Step::Build),
+    )
 }
 
 /// One numbered stage inside a store card: title, what it does, status, action.
@@ -1646,7 +1709,14 @@ fn release_stage(title: &str, hint: String, state: JobState, idle: &str, body: E
     }
 }
 
-fn job_button(label: &str, running_label: &str, running: bool, disabled: bool, class: &str, onclick: impl FnMut(MouseEvent) + 'static) -> Element {
+fn job_button(
+    label: &str,
+    running_label: &str,
+    running: bool,
+    disabled: bool,
+    class: &str,
+    onclick: impl FnMut(MouseEvent) + 'static,
+) -> Element {
     rsx! {
         button {
             class: "{class}",
@@ -1673,15 +1743,32 @@ pub(super) fn SubmitStep() -> Element {
     let version = p.version.trim().to_string();
 
     let existing = |pred: fn(&str) -> bool| -> Vec<(String, PathBuf)> {
-        p.output_paths.iter().filter(|(l, path)| pred(l) && path.exists()).cloned().collect()
+        p.output_paths
+            .iter()
+            .filter(|(l, path)| pred(l) && path.exists())
+            .cloned()
+            .collect()
     };
     let ios_shots = existing(|l| l.starts_with("iOS "));
-    let ios_langs = p.locales.iter().filter(|loc| ios_shots.iter().any(|(l, _)| l.contains(&format!("[{loc}]")))).count();
+    let ios_langs = p
+        .locales
+        .iter()
+        .filter(|loc| {
+            ios_shots
+                .iter()
+                .any(|(l, _)| l.contains(&format!("[{loc}]")))
+        })
+        .count();
     let android_shots = existing(|l| l.contains("Android Phone") || l.contains("Android Feature"));
     let described = |need_short: bool| {
         p.locales
             .iter()
-            .filter(|l| p.store_texts.get(*l).is_some_and(|t| !t.description.trim().is_empty() && (!need_short || !t.short_description.trim().is_empty())))
+            .filter(|l| {
+                p.store_texts.get(*l).is_some_and(|t| {
+                    !t.description.trim().is_empty()
+                        && (!need_short || !t.short_description.trim().is_empty())
+                })
+            })
             .count()
     };
     let running = |k: JobKind| matches!(ws.job_state(k), JobState::Running(_));

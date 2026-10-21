@@ -36,8 +36,14 @@ pub(super) fn package_refs_in(text: &str) -> Vec<(usize, String)> {
             }
         }
         let t = line.trim();
-        if t.contains("PACKAGE_NAME") && (t.starts_with("pub const") || t.starts_with("const") || t.starts_with("static")) {
-            if let Some(v) = t.split('"').nth(1).filter(|v| v.contains('.') && v.chars().all(is_package_char)) {
+        if t.contains("PACKAGE_NAME")
+            && (t.starts_with("pub const") || t.starts_with("const") || t.starts_with("static"))
+        {
+            if let Some(v) = t
+                .split('"')
+                .nth(1)
+                .filter(|v| v.contains('.') && v.chars().all(is_package_char))
+            {
                 found.push((n + 1, v.to_string()));
             }
         }
@@ -46,7 +52,9 @@ pub(super) fn package_refs_in(text: &str) -> Vec<(usize, String)> {
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let p = e.path();
         if p.is_dir() {
@@ -67,7 +75,11 @@ pub(super) fn package_mismatches(project: &Path, expected: &str) -> Vec<PackageR
         let text = std::fs::read_to_string(&f).unwrap_or_default();
         for (line, value) in package_refs_in(&text) {
             if value != expected {
-                bad.push(PackageRef { file: f.clone(), line, value });
+                bad.push(PackageRef {
+                    file: f.clone(),
+                    line,
+                    value,
+                });
             }
         }
     }
@@ -77,7 +89,11 @@ pub(super) fn package_mismatches(project: &Path, expected: &str) -> Vec<PackageR
             if let Some(v) = l.trim().strip_prefix("ANDROID_PACKAGE_NAME=") {
                 let v = v.trim().trim_matches('"').to_string();
                 if !v.is_empty() && v != expected {
-                    bad.push(PackageRef { file: env.clone(), line: n + 1, value: v });
+                    bad.push(PackageRef {
+                        file: env.clone(),
+                        line: n + 1,
+                        value: v,
+                    });
                 }
             }
         }
@@ -93,8 +109,18 @@ pub(super) fn fix_package_mismatches(expected: &str, refs: &[PackageRef]) -> Res
     let mut changed = 0;
     for f in files {
         let mut text = std::fs::read_to_string(f).map_err(|e| e.to_string())?;
-        for old in refs.iter().filter(|r| &r.file == f).map(|r| r.value.as_str()) {
-            for marker in ["details?id=", "/data/data/", "/data/user/0/", "ANDROID_PACKAGE_NAME=", "\""] {
+        for old in refs
+            .iter()
+            .filter(|r| &r.file == f)
+            .map(|r| r.value.as_str())
+        {
+            for marker in [
+                "details?id=",
+                "/data/data/",
+                "/data/user/0/",
+                "ANDROID_PACKAGE_NAME=",
+                "\"",
+            ] {
                 text = text.replace(&format!("{marker}{old}"), &format!("{marker}{expected}"));
             }
         }
@@ -123,19 +149,27 @@ pub(super) fn dioxus_toml_issues(toml: &str) -> Vec<String> {
         if !in_android || t.starts_with('#') {
             continue;
         }
-        let Some((k, v)) = t.split_once('=') else { continue };
+        let Some((k, v)) = t.split_once('=') else {
+            continue;
+        };
         match k.trim() {
-            "target_sdk_version" => issues.push("target_sdk_version is ignored by dx 0.7 — it's target_sdk".into()),
-            "min_sdk_version" => issues.push("min_sdk_version is ignored by dx 0.7 — it's min_sdk".into()),
-            "permissions" if v.trim().starts_with('[') => {
-                issues.push("permissions = [...] is rejected by dx 0.7.10 (INTERNET is added anyway)".into())
+            "target_sdk_version" => {
+                issues.push("target_sdk_version is ignored by dx 0.7 — it's target_sdk".into())
             }
+            "min_sdk_version" => {
+                issues.push("min_sdk_version is ignored by dx 0.7 — it's min_sdk".into())
+            }
+            "permissions" if v.trim().starts_with('[') => issues.push(
+                "permissions = [...] is rejected by dx 0.7.10 (INTERNET is added anyway)".into(),
+            ),
             "target_sdk" => target = v.trim().parse::<u32>().ok(),
             _ => {}
         }
     }
     if let Some(t) = target.filter(|t| *t < 36) {
-        issues.push(format!("target_sdk = {t} — Google Play requires 36 for updates"));
+        issues.push(format!(
+            "target_sdk = {t} — Google Play requires 36 for updates"
+        ));
     }
     issues
 }
@@ -145,7 +179,9 @@ pub(super) fn dioxus_toml_issues(toml: &str) -> Vec<String> {
 pub(super) fn fix_dioxus_toml(toml: &str) -> String {
     let mut out = Vec::new();
     let mut in_android = false;
-    let mut has_target = toml.lines().any(|l| l.trim().starts_with("target_sdk") && !l.trim().starts_with("target_sdk_version"));
+    let mut has_target = toml
+        .lines()
+        .any(|l| l.trim().starts_with("target_sdk") && !l.trim().starts_with("target_sdk_version"));
     for l in toml.lines() {
         let t = l.trim();
         if t.starts_with('[') {
@@ -204,7 +240,10 @@ let p = format!("/data/data/{}/files", x);
 let q = "/data/user/0/com.other.app/files/db";
 "#;
         let refs: Vec<String> = package_refs_in(src).into_iter().map(|(_, v)| v).collect();
-        assert_eq!(refs, vec!["com.mayorana.abjad", "com.mayorana.abjad", "com.other.app"]);
+        assert_eq!(
+            refs,
+            vec!["com.mayorana.abjad", "com.mayorana.abjad", "com.other.app"]
+        );
     }
 
     #[test]
@@ -217,12 +256,18 @@ let q = "/data/user/0/com.other.app/files/db";
             "pub const PACKAGE_NAME: &str = \"com.old.app\";\nconst URL: &str = \"market://details?id=com.old.app\";\n",
         )
         .unwrap();
-        std::fs::write(dir.join(".env"), "ANDROID_PACKAGE_NAME=\"com.old.app\"\nOTHER=1\n").unwrap();
+        std::fs::write(
+            dir.join(".env"),
+            "ANDROID_PACKAGE_NAME=\"com.old.app\"\nOTHER=1\n",
+        )
+        .unwrap();
         let bad = package_mismatches(&dir, "com.new.app");
         assert_eq!(bad.len(), 3);
         fix_package_mismatches("com.new.app", &bad).unwrap();
         assert!(package_mismatches(&dir, "com.new.app").is_empty());
-        assert!(std::fs::read_to_string(dir.join(".env")).unwrap().contains("OTHER=1"));
+        assert!(std::fs::read_to_string(dir.join(".env"))
+            .unwrap()
+            .contains("OTHER=1"));
     }
 
     #[test]
@@ -231,10 +276,13 @@ let q = "/data/user/0/com.other.app/files/db";
         assert_eq!(dioxus_toml_issues(toml).len(), 3);
         let fixed = fix_dioxus_toml(toml);
         assert!(dioxus_toml_issues(&fixed).is_empty(), "{fixed}");
-        assert!(fixed.contains("min_sdk = 24") && fixed.contains("target_sdk = 36") && fixed.contains("compile_sdk = 36"));
+        assert!(
+            fixed.contains("min_sdk = 24")
+                && fixed.contains("target_sdk = 36")
+                && fixed.contains("compile_sdk = 36")
+        );
         assert!(fixed.contains("[bundle]\nidentifier = \"x\""));
         assert!(dioxus_toml_issues("[android]\ntarget_sdk = 34\n")[0].contains("36"));
         assert!(dioxus_toml_issues("[android]\ntarget_sdk = 36\ncompile_sdk = 36\n").is_empty());
     }
 }
-
