@@ -39,11 +39,19 @@ build runs a release build and takes minutes. Uploading to the stores is not ava
 from the Submit step in the ShipScreen window.";
 
 /// The stores' limits per store text field, as the Store text step shows them.
-const STORE_FIELDS: [(&str, usize); 5] =
-    [("description", 4000), ("whats_new", 4000), ("keywords", 100), ("promo_text", 170), ("short_description", 80)];
+const STORE_FIELDS: [(&str, usize); 5] = [
+    ("description", 4000),
+    ("whats_new", 4000),
+    ("keywords", 100),
+    ("promo_text", 170),
+    ("short_description", 80),
+];
 
 pub(crate) fn serve() {
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
     runtime.block_on(async {
         let stdin = std::io::stdin();
         let mut stdout = std::io::stdout();
@@ -58,7 +66,9 @@ pub(crate) fn serve() {
             };
             // A notification (no id) asks for nothing back: `initialized`,
             // cancellations, and whatever later revisions add.
-            let Some(id) = message.get("id").cloned() else { continue };
+            let Some(id) = message.get("id").cloned() else {
+                continue;
+            };
             let reply = handle(id, &message).await;
             write(&mut stdout, &reply);
         }
@@ -90,7 +100,10 @@ async fn handle(id: Value, message: &Value) -> Value {
                 Ok(value) => (pretty(&value), false),
                 Err(why) => (why, true),
             };
-            result(id, json!({ "content": [{ "type": "text", "text": text }], "isError": is_error }))
+            result(
+                id,
+                json!({ "content": [{ "type": "text", "text": text }], "isError": is_error }),
+            )
         }
         _ => error(id, -32601, &format!("no method {method}")),
     }
@@ -120,14 +133,18 @@ fn pretty(value: &Value) -> String {
 // ── Tool definitions ─────────────────────────────────────────────────────
 
 fn tools() -> Value {
-    let project = json!({ "type": "string", "description": "Absolute path of the project folder." });
+    let project =
+        json!({ "type": "string", "description": "Absolute path of the project folder." });
     let codes: Vec<&str> = LOCALES.iter().map(|(code, _)| *code).collect();
     let locale = json!({ "type": "string", "enum": codes, "description": "Store language code." });
     let mut store_fields = serde_json::Map::new();
     store_fields.insert("project".into(), project.clone());
     store_fields.insert("locale".into(), locale.clone());
     for (field, limit) in STORE_FIELDS {
-        store_fields.insert(field.into(), json!({ "type": "string", "description": format!("At most {limit} characters.") }));
+        store_fields.insert(
+            field.into(),
+            json!({ "type": "string", "description": format!("At most {limit} characters.") }),
+        );
     }
     json!([
         {
@@ -281,18 +298,31 @@ async fn call(name: &str, args: &Value) -> Result<Value, String> {
 // ── Arguments ────────────────────────────────────────────────────────────
 
 fn text(args: &Value, key: &str) -> Result<String, String> {
-    args[key].as_str().map(str::trim).filter(|s| !s.is_empty()).map(String::from).ok_or(format!("{key} is required"))
+    args[key]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .ok_or(format!("{key} is required"))
 }
 
 fn known_locale(code: &str) -> Result<&'static str, String> {
-    LOCALES.iter().find(|(c, _)| c.eq_ignore_ascii_case(code.trim())).map(|(c, _)| *c).ok_or_else(|| {
-        let all: Vec<String> = LOCALES.iter().map(|(c, n)| format!("{c} ({n})")).collect();
-        format!("no language {code}; ShipScreen has {}", all.join(", "))
-    })
+    LOCALES
+        .iter()
+        .find(|(c, _)| c.eq_ignore_ascii_case(code.trim()))
+        .map(|(c, _)| *c)
+        .ok_or_else(|| {
+            let all: Vec<String> = LOCALES.iter().map(|(c, n)| format!("{c} ({n})")).collect();
+            format!("no language {code}; ShipScreen has {}", all.join(", "))
+        })
 }
 
 fn locale_name(code: &str) -> &'static str {
-    LOCALES.iter().find(|(c, _)| *c == code).map(|(_, n)| *n).unwrap_or("")
+    LOCALES
+        .iter()
+        .find(|(c, _)| *c == code)
+        .map(|(_, n)| *n)
+        .unwrap_or("")
 }
 
 // ── One project ──────────────────────────────────────────────────────────
@@ -312,7 +342,10 @@ impl Project {
             return Err(format!("{} is not a folder", dir.display()));
         }
         let known = load_settings().recent_projects.iter().any(|p| p == &dir);
-        if !known && !dir.join("shipscreen.json").is_file() && !dir.join("appscreens.json").is_file() {
+        if !known
+            && !dir.join("shipscreen.json").is_file()
+            && !dir.join("appscreens.json").is_file()
+        {
             return Err(format!(
                 "{} is not a ShipScreen project: open it once in ShipScreen, or pick one from list_projects",
                 dir.display()
@@ -333,7 +366,10 @@ impl Project {
     }
 
     /// Applies `f` to the state as on disk now and saves it.
-    fn change<R>(&self, f: impl FnOnce(&mut ProjectState) -> Result<R, String>) -> Result<R, String> {
+    fn change<R>(
+        &self,
+        f: impl FnOnce(&mut ProjectState) -> Result<R, String>,
+    ) -> Result<R, String> {
         let mut state = self.state();
         let r = f(&mut state)?;
         save_project_state(&self.dir, &state);
@@ -346,8 +382,11 @@ impl Project {
 }
 
 fn describe(dir: &std::path::Path, p: &ProjectState, settings: &Settings) -> Value {
-    let languages: Vec<Value> =
-        p.locales.iter().map(|c| json!({ "code": c, "name": locale_name(c) })).collect();
+    let languages: Vec<Value> = p
+        .locales
+        .iter()
+        .map(|c| json!({ "code": c, "name": locale_name(c) }))
+        .collect();
     let mut screens = serde_json::Map::new();
     let mut store = serde_json::Map::new();
     for locale in &p.locales {
@@ -374,22 +413,38 @@ fn describe(dir: &std::path::Path, p: &ProjectState, settings: &Settings) -> Val
         store.insert(locale.clone(), Value::Object(fields));
     }
 
-    let artifact = |a: &Option<Artifact>| a.as_ref().map(|a| json!({ "path": a.path, "made": ago(a.modified) }));
+    let artifact = |a: &Option<Artifact>| {
+        a.as_ref()
+            .map(|a| json!({ "path": a.path, "made": ago(a.modified) }))
+    };
     let found = scan_artifacts(dir);
     let creds = read_creds(dir);
     let inputs = jobs::BuildInputs::of(dir, p, settings);
     let mut builds = serde_json::Map::new();
     for (target, script, applies) in [
-        ("ios", "build_ios_distribution.sh", p.platform_type.has_ios()),
-        ("aab", "build_android_release.sh", p.platform_type.has_android()),
+        (
+            "ios",
+            "build_ios_distribution.sh",
+            p.platform_type.has_ios(),
+        ),
+        (
+            "aab",
+            "build_android_release.sh",
+            p.platform_type.has_android(),
+        ),
         ("apk", "build_apk.sh", p.platform_type.has_android()),
     ] {
         if applies {
-            builds.insert(target.into(), json!(inputs.problem(script).unwrap_or_else(|| "ready".into())));
+            builds.insert(
+                target.into(),
+                json!(inputs.problem(script).unwrap_or_else(|| "ready".into())),
+            );
         }
     }
     let checks = |list: &[CredCheck]| -> Vec<Value> {
-        list.iter().map(|c| json!({ "check": c.label, "ok": c.ok, "detail": c.detail })).collect()
+        list.iter()
+            .map(|c| json!({ "check": c.label, "ok": c.ok, "detail": c.detail }))
+            .collect()
     };
     let (signing, _) = resolve_android_signing(dir, &settings.android_keystore_path, &key_alias(p));
 
@@ -485,7 +540,10 @@ fn set_app(args: &Value) -> Result<Value, String> {
         if let Some(v) = s("support_url") {
             p.support_url = v;
         }
-        for (key, slot) in [("primary_color", &mut p.primary_color), ("secondary_color", &mut p.secondary_color)] {
+        for (key, slot) in [
+            ("primary_color", &mut p.primary_color),
+            ("secondary_color", &mut p.secondary_color),
+        ] {
             if let Some(v) = s(key) {
                 if parse_hex_color(&v).is_none() {
                     return Err(format!("{key} is a colour like #3B82F6, not {v}"));
@@ -498,13 +556,17 @@ fn set_app(args: &Value) -> Result<Value, String> {
         }
         if let Some(v) = s("play_track") {
             if !["internal", "alpha", "beta", "production"].contains(&v.as_str()) {
-                return Err(format!("play_track is internal, alpha, beta or production, not {v}"));
+                return Err(format!(
+                    "play_track is internal, alpha, beta or production, not {v}"
+                ));
             }
             p.play_track = v;
         }
         if let Some(v) = s("play_release_status") {
             if !["draft", "completed"].contains(&v.as_str()) {
-                return Err(format!("play_release_status is draft or completed, not {v}"));
+                return Err(format!(
+                    "play_release_status is draft or completed, not {v}"
+                ));
             }
             p.play_release_status = v;
         }
@@ -518,7 +580,9 @@ fn set_version(args: &Value) -> Result<Value, String> {
     let v = project.change(|p| {
         if let Some(v) = args["version"].as_str().map(str::trim) {
             if !valid_version(v) {
-                return Err(format!("{v} is not a version the stores take; use numbers like 1.2.0"));
+                return Err(format!(
+                    "{v} is not a version the stores take; use numbers like 1.2.0"
+                ));
             }
             p.version = v.to_string();
         }
@@ -531,7 +595,11 @@ fn set_version(args: &Value) -> Result<Value, String> {
             };
             p.version = bump_version(&p.version, idx);
         }
-        let number = |key: &str| args[key].as_u64().map(|n| u32::try_from(n).unwrap_or(u32::MAX).max(1));
+        let number = |key: &str| {
+            args[key]
+                .as_u64()
+                .map(|n| u32::try_from(n).unwrap_or(u32::MAX).max(1))
+        };
         if let Some(n) = number("ios_build_number") {
             p.ios_build_number = n;
         }
@@ -554,11 +622,18 @@ fn set_version(args: &Value) -> Result<Value, String> {
 fn set_languages(args: &Value) -> Result<Value, String> {
     let project = Project::from(args)?;
     let list = |key: &str| -> Result<Vec<&'static str>, String> {
-        args[key].as_array().into_iter().flatten().map(|v| known_locale(v.as_str().unwrap_or(""))).collect()
+        args[key]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|v| known_locale(v.as_str().unwrap_or("")))
+            .collect()
     };
     let (add, remove) = (list("add")?, list("remove")?);
     if remove.contains(&"en-US") {
-        return Err("English (en-US) is always kept: it is the default language in both stores".into());
+        return Err(
+            "English (en-US) is always kept: it is the default language in both stores".into(),
+        );
     }
     project.change(|p| {
         p.locales.retain(|l| !remove.contains(&l.as_str()));
@@ -579,17 +654,29 @@ fn set_screens(args: &Value) -> Result<Value, String> {
     let locale = known_locale(&text(args, "locale")?)?;
     project.change(|p| {
         if !p.locales.iter().any(|l| l == locale) {
-            return Err(format!("{locale} is not one of the project's languages: add it with set_languages"));
+            return Err(format!(
+                "{locale} is not one of the project's languages: add it with set_languages"
+            ));
         }
         let mut sources = p.sources_for(locale);
         let mut texts = p.texts_for(locale);
-        texts.resize(sources.len().max(texts.len()), (String::new(), String::new()));
+        texts.resize(
+            sources.len().max(texts.len()),
+            (String::new(), String::new()),
+        );
         let count = sources.len();
         let screen = |n: u64| -> Result<usize, String> {
-            (n as usize).checked_sub(1).filter(|i| *i < count).ok_or(format!("no screen {n}: {locale} has {count}"))
+            (n as usize)
+                .checked_sub(1)
+                .filter(|i| *i < count)
+                .ok_or(format!("no screen {n}: {locale} has {count}"))
         };
         for c in args["captions"].as_array().into_iter().flatten() {
-            let i = screen(c["screen"].as_u64().ok_or("each caption needs its screen number")?)?;
+            let i = screen(
+                c["screen"]
+                    .as_u64()
+                    .ok_or("each caption needs its screen number")?,
+            )?;
             if let Some(t) = c["title"].as_str() {
                 texts[i].0 = t.trim().to_string();
             }
@@ -613,12 +700,20 @@ fn set_screens(args: &Value) -> Result<Value, String> {
         }
         texts.truncate(sources.len());
         for a in args["add"].as_array().into_iter().flatten() {
-            let path = PathBuf::from(a["path"].as_str().ok_or("each screen added needs its path")?);
-            let image = path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
-                ["png", "jpg", "jpeg"].contains(&e.to_ascii_lowercase().as_str())
-            });
+            let path = PathBuf::from(
+                a["path"]
+                    .as_str()
+                    .ok_or("each screen added needs its path")?,
+            );
+            let image = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| ["png", "jpg", "jpeg"].contains(&e.to_ascii_lowercase().as_str()));
             if !path.is_absolute() || !path.is_file() || !image {
-                return Err(format!("{} is not a PNG or JPEG file (an absolute path)", path.display()));
+                return Err(format!(
+                    "{} is not a PNG or JPEG file (an absolute path)",
+                    path.display()
+                ));
             }
             if sources.contains(&path) {
                 continue;
@@ -647,7 +742,9 @@ fn set_store_text(args: &Value) -> Result<Value, String> {
     }
     project.change(|p| {
         if !p.locales.iter().any(|l| l == locale) {
-            return Err(format!("{locale} is not one of the project's languages: add it with set_languages"));
+            return Err(format!(
+                "{locale} is not one of the project's languages: add it with set_languages"
+            ));
         }
         let t = p.store_texts.entry(locale.to_string()).or_default();
         for (field, _) in STORE_FIELDS {
@@ -675,9 +772,10 @@ async fn generate(args: &Value) -> Result<Value, String> {
     let state = project.state();
     let (log, collected) = lines();
     let mut previews = Vec::new();
-    let outputs =
-        jobs::generate_manual_images(project.dir.clone(), state, log, |enc| previews.push(format!("/localimg/{enc}")))
-            .await?;
+    let outputs = jobs::generate_manual_images(project.dir.clone(), state, log, |enc| {
+        previews.push(format!("/localimg/{enc}"))
+    })
+    .await?;
     let count = outputs.len();
     project.change(|p| {
         p.generated_urls = previews;
@@ -723,7 +821,10 @@ async fn run(args: &Value) -> Result<Value, String> {
             };
             Ok(json!({ "built": made.map(|a| a.path), "numbers": numbers, "log": tail(&log) }))
         }
-        Err(e) => Err(format!("{e}\n\nLast lines of the build:\n{}", tail(&log).join("\n"))),
+        Err(e) => Err(format!(
+            "{e}\n\nLast lines of the build:\n{}",
+            tail(&log).join("\n")
+        )),
     }
 }
 
@@ -731,7 +832,9 @@ async fn run(args: &Value) -> Result<Value, String> {
 
 /// This executable, as a client should start it.
 fn command() -> String {
-    std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| "shipscreen".into())
+    std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "shipscreen".into())
 }
 
 /// The `mcpServers` entry for Claude Desktop's config file. Built with serde
@@ -857,9 +960,17 @@ mod tests {
         assert_eq!(names.len(), tools.len());
         for t in tools {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
-            for required in t["inputSchema"]["required"].as_array().into_iter().flatten() {
+            for required in t["inputSchema"]["required"]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
                 let key = required.as_str().unwrap();
-                assert!(t["inputSchema"]["properties"].get(key).is_some(), "{} requires {key} undescribed", t["name"]);
+                assert!(
+                    t["inputSchema"]["properties"].get(key).is_some(),
+                    "{} requires {key} undescribed",
+                    t["name"]
+                );
             }
         }
     }
@@ -878,13 +989,21 @@ mod tests {
 
     #[test]
     fn the_desktop_entry_starts_this_app_in_mcp_mode() {
-        let config: Value =
-            serde_json::from_str(&desktop_config("/Applications/ShipScreen.app/Contents/MacOS/shipscreen")).unwrap();
-        assert_eq!(config["mcpServers"]["shipscreen"]["command"], "/Applications/ShipScreen.app/Contents/MacOS/shipscreen");
+        let config: Value = serde_json::from_str(&desktop_config(
+            "/Applications/ShipScreen.app/Contents/MacOS/shipscreen",
+        ))
+        .unwrap();
+        assert_eq!(
+            config["mcpServers"]["shipscreen"]["command"],
+            "/Applications/ShipScreen.app/Contents/MacOS/shipscreen"
+        );
         assert_eq!(config["mcpServers"]["shipscreen"]["args"], json!(["mcp"]));
         let path = r"C:\Program Files\ShipScreen\shipscreen.exe";
         let config: Value = serde_json::from_str(&desktop_config(path)).unwrap();
         assert_eq!(config["mcpServers"]["shipscreen"]["command"], path);
-        assert_eq!(code_command("/A B/shipscreen"), "claude mcp add shipscreen --scope user -- \"/A B/shipscreen\" mcp");
+        assert_eq!(
+            code_command("/A B/shipscreen"),
+            "claude mcp add shipscreen --scope user -- \"/A B/shipscreen\" mcp"
+        );
     }
 }

@@ -46,20 +46,34 @@ fn is_screens_shape(x: u32, y: u32, size: u32) -> bool {
     let fx = x as f32;
     let fy = y as f32;
     let phone = |cx: f32, cy: f32, w: f32, h: f32, corner: f32| -> bool {
-        let left   = cx - w / 2.0;
-        let right  = cx + w / 2.0;
-        let top    = cy - h / 2.0;
+        let left = cx - w / 2.0;
+        let right = cx + w / 2.0;
+        let top = cy - h / 2.0;
         let bottom = cy + h / 2.0;
-        if fx < left || fx > right || fy < top || fy > bottom { return false; }
-        let dx = if fx < left + corner { left + corner - fx }
-                 else if fx > right - corner { fx - (right - corner) }
-                 else { 0.0 };
-        let dy = if fy < top + corner { top + corner - fy }
-                 else if fy > bottom - corner { fy - (bottom - corner) }
-                 else { 0.0 };
+        if fx < left || fx > right || fy < top || fy > bottom {
+            return false;
+        }
+        let dx = if fx < left + corner {
+            left + corner - fx
+        } else if fx > right - corner {
+            fx - (right - corner)
+        } else {
+            0.0
+        };
+        let dy = if fy < top + corner {
+            top + corner - fy
+        } else if fy > bottom - corner {
+            fy - (bottom - corner)
+        } else {
+            0.0
+        };
         dx * dx + dy * dy <= corner * corner
     };
-    if phone(s * 0.42, s * 0.45, s * 0.32, s * 0.48, s * 0.05) { return true; }
-    if phone(s * 0.58, s * 0.55, s * 0.32, s * 0.48, s * 0.05) { return true; }
+    if phone(s * 0.42, s * 0.45, s * 0.32, s * 0.48, s * 0.05) {
+        return true;
+    }
+    if phone(s * 0.58, s * 0.55, s * 0.32, s * 0.48, s * 0.05) {
+        return true;
+    }
     false
 }

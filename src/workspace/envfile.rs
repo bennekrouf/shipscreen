@@ -12,7 +12,10 @@ pub(super) fn upsert(text: &str, key: &str, value: &str) -> String {
     let mut out: Vec<String> = text
         .lines()
         .map(|l| {
-            let t = l.trim_start().strip_prefix("export ").unwrap_or(l.trim_start());
+            let t = l
+                .trim_start()
+                .strip_prefix("export ")
+                .unwrap_or(l.trim_start());
             if !found && t.split_once('=').is_some_and(|(k, _)| k.trim() == key) {
                 found = true;
                 line.clone()
@@ -39,7 +42,10 @@ fn quote(v: &str) -> String {
 
 fn defines(text: &str, key: &str) -> bool {
     text.lines().any(|l| {
-        let t = l.trim_start().strip_prefix("export ").unwrap_or(l.trim_start());
+        let t = l
+            .trim_start()
+            .strip_prefix("export ")
+            .unwrap_or(l.trim_start());
         !t.starts_with('#') && t.split_once('=').is_some_and(|(k, _)| k.trim() == key)
     })
 }
@@ -78,11 +84,18 @@ fn write_private(path: &Path, text: &str) -> Result<(), String> {
 fn ignore_in_git(project: &Path) -> Result<(), String> {
     let path = project.join(".gitignore");
     let text = std::fs::read_to_string(&path).unwrap_or_default();
-    let covered = text.lines().map(str::trim).any(|l| matches!(l, ".env" | "/.env" | "*.env" | ".env*" | "**/.env"));
+    let covered = text
+        .lines()
+        .map(str::trim)
+        .any(|l| matches!(l, ".env" | "/.env" | "*.env" | ".env*" | "**/.env"));
     if covered {
         return Ok(());
     }
-    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+    let sep = if text.is_empty() || text.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
     std::fs::write(&path, format!("{text}{sep}.env\n")).map_err(|e| e.to_string())
 }
 
@@ -94,9 +107,18 @@ mod tests {
     fn replaces_in_place_and_appends_new_keys() {
         let text = "# App Store\nAPP_STORE_CONNECT_API_KEY_KEY_ID=OLD\nexport OTHER=1\n";
         let t = upsert(text, "APP_STORE_CONNECT_API_KEY_KEY_ID", "4TALSPNY5Y");
-        assert_eq!(t, "# App Store\nAPP_STORE_CONNECT_API_KEY_KEY_ID=4TALSPNY5Y\nexport OTHER=1\n");
-        let t = upsert(&t, "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH", "/Users/me/my keys/AuthKey.p8");
-        assert!(t.ends_with("APP_STORE_CONNECT_API_KEY_KEY_FILEPATH=\"/Users/me/my keys/AuthKey.p8\"\n"));
+        assert_eq!(
+            t,
+            "# App Store\nAPP_STORE_CONNECT_API_KEY_KEY_ID=4TALSPNY5Y\nexport OTHER=1\n"
+        );
+        let t = upsert(
+            &t,
+            "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH",
+            "/Users/me/my keys/AuthKey.p8",
+        );
+        assert!(t.ends_with(
+            "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH=\"/Users/me/my keys/AuthKey.p8\"\n"
+        ));
         assert_eq!(upsert("", "A", "b"), "A=b\n");
     }
 
@@ -105,19 +127,49 @@ mod tests {
         let dir = std::env::temp_dir().join("shipscreen-test-envfile");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("fastlane")).unwrap();
-        std::fs::write(dir.join("fastlane/.env"), "APP_STORE_CONNECT_API_KEY_ISSUER_ID=old\n").unwrap();
+        std::fs::write(
+            dir.join("fastlane/.env"),
+            "APP_STORE_CONNECT_API_KEY_ISSUER_ID=old\n",
+        )
+        .unwrap();
         std::fs::write(dir.join(".gitignore"), "/target").unwrap();
-        set_values(&dir, &[("APP_STORE_CONNECT_API_KEY_ISSUER_ID", "new"), ("APP_STORE_CONNECT_API_KEY_KEY_ID", "K")]).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("fastlane/.env")).unwrap(), "APP_STORE_CONNECT_API_KEY_ISSUER_ID=new\n");
-        assert_eq!(std::fs::read_to_string(dir.join(".env")).unwrap(), "APP_STORE_CONNECT_API_KEY_KEY_ID=K\n");
-        assert_eq!(std::fs::read_to_string(dir.join(".gitignore")).unwrap(), "/target\n.env\n");
+        set_values(
+            &dir,
+            &[
+                ("APP_STORE_CONNECT_API_KEY_ISSUER_ID", "new"),
+                ("APP_STORE_CONNECT_API_KEY_KEY_ID", "K"),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("fastlane/.env")).unwrap(),
+            "APP_STORE_CONNECT_API_KEY_ISSUER_ID=new\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".env")).unwrap(),
+            "APP_STORE_CONNECT_API_KEY_KEY_ID=K\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".gitignore")).unwrap(),
+            "/target\n.env\n"
+        );
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            assert_eq!(std::fs::metadata(dir.join(".env")).unwrap().permissions().mode() & 0o777, 0o600);
+            assert_eq!(
+                std::fs::metadata(dir.join(".env"))
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
         }
         // Already ignored: untouched.
         set_values(&dir, &[("X", "1")]).unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join(".gitignore")).unwrap(), "/target\n.env\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".gitignore")).unwrap(),
+            "/target\n.env\n"
+        );
     }
 }

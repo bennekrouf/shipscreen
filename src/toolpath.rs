@@ -24,7 +24,11 @@ fn tool_path(current: &OsStr, cargo_bin: Option<PathBuf>, login: Option<OsString
     let mut folders: Vec<PathBuf> = Vec::new();
     let candidates = cargo_bin
         .into_iter()
-        .chain(login.iter().flat_map(|p| std::env::split_paths(p).collect::<Vec<_>>()))
+        .chain(
+            login
+                .iter()
+                .flat_map(|p| std::env::split_paths(p).collect::<Vec<_>>()),
+        )
         .chain(std::env::split_paths(current));
     for folder in candidates {
         if !folder.as_os_str().is_empty() && !folders.contains(&folder) {
@@ -51,7 +55,10 @@ fn login_shell_path() -> Option<OsString> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
-    let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "/bin/zsh".into());
+    let shell = std::env::var("SHELL")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "/bin/zsh".into());
     let mut child = Command::new(shell)
         .args(["-l", "-c", &format!("printf '{MARKER}%s' \"$PATH\"")])
         .stdin(Stdio::null())
@@ -96,20 +103,31 @@ mod tests {
         let path = tool_path(
             OsStr::new("/usr/bin:/bin"),
             Some(PathBuf::from("/Users/me/.cargo/bin")),
-            Some(OsString::from("/opt/homebrew/bin:/usr/bin:/Users/me/.cargo/bin")),
+            Some(OsString::from(
+                "/opt/homebrew/bin:/usr/bin:/Users/me/.cargo/bin",
+            )),
         );
-        assert_eq!(path, OsString::from("/Users/me/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin"));
+        assert_eq!(
+            path,
+            OsString::from("/Users/me/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin")
+        );
     }
 
     #[test]
     fn keeps_inherited_path_when_nothing_else_is_known() {
-        assert_eq!(tool_path(OsStr::new("/usr/bin:/bin"), None, None), OsString::from("/usr/bin:/bin"));
+        assert_eq!(
+            tool_path(OsStr::new("/usr/bin:/bin"), None, None),
+            OsString::from("/usr/bin:/bin")
+        );
     }
 
     #[test]
     fn reads_path_after_profile_banners() {
         let out = format!("Welcome!\n{MARKER}/opt/homebrew/bin:/usr/bin\n");
-        assert_eq!(path_after_marker(&out), Some(OsString::from("/opt/homebrew/bin:/usr/bin")));
+        assert_eq!(
+            path_after_marker(&out),
+            Some(OsString::from("/opt/homebrew/bin:/usr/bin"))
+        );
         assert_eq!(path_after_marker("no marker"), None);
         assert_eq!(path_after_marker(MARKER), None);
     }

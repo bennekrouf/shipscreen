@@ -94,22 +94,20 @@ fn open_url(url: &str) {
 }
 
 /// "Get Pro…" while free, "✦ PRO" once licensed; opens the window either way.
-/// Nothing at all in a build that can't check licences.
 #[component]
 pub fn ProButton() -> Element {
     let mut pro = use_context::<Pro>();
     let status = pro.status.read().clone();
     let (label, class, title) = match &status {
-        Status::Unavailable => return rsx! {},
-        Status::Pro(l) => (
+        Status::Pro(a) => (
             "✦ PRO",
             "pro-btn active",
-            format!("ShipScreen Pro, licensed to {}", l.email),
+            format!("ShipScreen Pro, {} plan for {}", a.plan.name, a.email),
         ),
-        Status::Renew(_) => (
+        Status::NotPro(_) | Status::Offline(_) | Status::Unknown(_) => (
             "✦ RENEW PRO",
             "pro-btn renew",
-            "Your Pro licence doesn't cover this version".to_owned(),
+            "Your licence doesn't make this ShipScreen Pro right now".to_owned(),
         ),
         Status::Free => (
             "Get Pro…",
@@ -137,10 +135,12 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     let mut pro = use_context::<Pro>();
     let mut key = use_signal(String::new);
     let mut error = use_signal(|| Option::<String>::None);
+    let mut busy = use_signal(|| false);
     if !(pro.open)() {
         return rsx! {};
     }
     let status = pro.status.read().clone();
+    let asks_number = matches!(status, Status::Free | Status::Unknown(_));
     let pending = pro.pending.read().clone();
     let free = free_app();
     let mut close = move || {
@@ -150,21 +150,45 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     };
     let mut activate = move || {
         let pasted = key.read().clone();
-        match licence::activate(&pasted) {
-            Ok(s) => {
-                let unlocked = s.unlimited();
-                pro.status.set(s);
-                key.set(String::new());
-                error.set(None);
-                if unlocked {
-                    if let Some(dir) = pro.pending.take() {
-                        pro.open.set(false);
-                        on_open.call(dir);
+        busy.set(true);
+        spawn(async move {
+            match licence::activate(&pasted).await {
+                Ok(s) => {
+                    let unlocked = s.unlimited();
+                    pro.status.set(s);
+                    key.set(String::new());
+                    error.set(None);
+                    if unlocked {
+                        if let Some(dir) = pro.pending.take() {
+                            pro.open.set(false);
+                            on_open.call(dir);
+                        }
                     }
                 }
+                Err(e) => error.set(Some(e)),
             }
-            Err(e) => error.set(Some(e)),
-        }
+            busy.set(false);
+        });
+    };
+    let mut check_again = move || {
+        busy.set(true);
+        spawn(async move {
+            pro.status.set(licence::refresh(true).await);
+            busy.set(false);
+        });
+    };
+    let mut manage = move |number: String| {
+        busy.set(true);
+        spawn(async move {
+            match licence::portal_url(&number).await {
+                Ok(url) => {
+                    open_url(&url);
+                    error.set(None);
+                }
+                Err(e) => error.set(Some(e)),
+            }
+            busy.set(false);
+        });
     };
     let free_name = free.as_deref().map(folder_name);
     let pending_name = pending.as_deref().map(folder_name);
@@ -176,68 +200,88 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                 h2 { "ShipScreen Pro" }
             }
             match &status {
-                Status::Free => rsx! {
-                    if let (Some(p), Some(f)) = (&pending_name, &free_name) {
-                        p {
-                            "The free version works on one app, and yours is "
-                            strong { "{f}" }
-                            ". To open "
-                            strong { "{p}" }
-                            " too, get ShipScreen Pro, or make it your free app instead."
-                        }
-                    } else {
-                        p {
-                            "The free version works on one app"
-                            if let Some(f) = &free_name { ": " strong { "{f}" } }
-                            ", with every step from build to store submission. "
-                            "Pro works on any number of apps, and is the licence for commercial use."
-                        }
-                    }
-                },
-                Status::Pro(l) => rsx! {
+                Status::Pro(a) => rsx! {
                     p { class: "pro-ok",
-                        "Pro is active on this computer, licensed to "
-                        strong { "{l.email}" }
-                        ". Updates included until {l.updates_until}."
+                        "Pro is active on this computer: "
+                        strong { "{a.plan.name}" }
+                        " plan for "
+                        strong { "{a.email}" }
+                        "."
+                    }
+                    p { class: "settings-hint",
+                        "{a.credits.left} AI credits left this month. {a.renewal()}."
                     }
                 },
-                Status::Renew(l) => rsx! {
+                Status::NotPro(a) if !a.active => rsx! {
                     p {
-                        "Your licence ("
-                        strong { "{l.email}" }
-                        ") covers versions released until {l.updates_until}. This version is newer, so it runs as the free version: renew Pro to use it here, or keep using a version from before that date."
+                        "The subscription for "
+                        strong { "{a.email}" }
+                        " isn't active, so ShipScreen runs as the free version. Renew it to have Pro again."
                     }
                 },
-                Status::Unavailable => rsx! {
-                    p { "This build of ShipScreen can't check licences, so nothing is limited. Builds from mayorana.ch can." }
+                Status::NotPro(a) => rsx! {
+                    p {
+                        "The "
+                        strong { "{a.plan.name}" }
+                        " plan doesn't include ShipScreen, so it runs as the free version. A plan with ShipScreen makes it Pro."
+                    }
                 },
+                Status::Offline(a) => rsx! {
+                    p {
+                        "ShipScreen hasn't been able to check the licence for "
+                        strong { "{a.email}" }
+                        " for a week, so it runs as the free version until it can. Check the connection, then check again."
+                    }
+                },
+                Status::Unknown(_) => rsx! {
+                    p { "The licence number on this computer isn't known. Check it against the email, or paste it again." }
+                },
+                Status::Free => rsx! {},
             }
-            if matches!(status, Status::Free | Status::Renew(_)) {
+            if !status.unlimited() {
+                if let (Some(p), Some(f)) = (&pending_name, &free_name) {
+                    p {
+                        "The free version works on one app, and yours is "
+                        strong { "{f}" }
+                        ". To open "
+                        strong { "{p}" }
+                        " too, get ShipScreen Pro, or make it your free app instead."
+                    }
+                } else if matches!(status, Status::Free) {
+                    p {
+                        "The free version works on one app"
+                        if let Some(f) = &free_name { ": " strong { "{f}" } }
+                        ", with every step from build to store submission. "
+                        "Pro works on any number of apps, and is the licence for commercial use. "
+                        "It comes with a monthly plan on mayorana.ch."
+                    }
+                }
                 button {
                     class: "btn btn-primary",
                     onclick: move |_| open_url(licence::BUY_URL),
-                    if matches!(status, Status::Renew(_)) { "Renew ShipScreen Pro" } else { "Buy ShipScreen Pro" }
+                    if asks_number { "Buy ShipScreen Pro" } else { "Renew ShipScreen Pro" }
                 }
-                p { class: "settings-hint", "Already bought it? Paste the licence key from your email:" }
-                textarea {
+            }
+            if asks_number {
+                p { class: "settings-hint", "Already subscribed? Paste the licence number from your email:" }
+                input {
                     class: "licence-key",
-                    rows: 4,
-                    placeholder: "Licence key",
+                    placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
                     value: "{key}",
                     oninput: move |e| key.set(e.value()),
                 }
-                if let Some(e) = error.read().as_ref() {
-                    p { class: "pro-error", "{e}" }
-                }
                 p { class: "settings-hint",
-                    "The key is checked on this computer: no account, nothing sent anywhere."
+                    "The number is checked with api0 now and once a day. Pro keeps working for a week without a connection."
                 }
             }
+            if let Some(e) = error.read().as_ref() {
+                p { class: "pro-error", "{e}" }
+            }
             div { class: "pro-actions",
-                if matches!(status, Status::Free | Status::Renew(_)) {
+                if asks_number {
                     button {
                         class: "btn",
-                        disabled: key.read().trim().is_empty(),
+                        disabled: key.read().trim().is_empty() || busy(),
                         onclick: move |_| activate(),
                         "Activate"
                     }
@@ -255,7 +299,22 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                         "Make {name} my free app"
                     }
                 }
-                if matches!(status, Status::Pro(_) | Status::Renew(_)) {
+                if let (Some(number), false) = (status.licence().map(str::to_owned), asks_number) {
+                    button {
+                        class: "btn",
+                        disabled: busy(),
+                        title: "Change or cancel the plan on mayorana.ch",
+                        onclick: move |_| manage(number.clone()),
+                        "Manage subscription"
+                    }
+                    button {
+                        class: "btn",
+                        disabled: busy(),
+                        onclick: move |_| check_again(),
+                        "Check again"
+                    }
+                }
+                if status.licence().is_some() {
                     button {
                         class: "btn",
                         title: "To move the licence to another computer",
@@ -286,9 +345,22 @@ mod tests {
     }
 
     #[test]
-    fn pro_and_keyless_builds_open_anything() {
+    fn pro_opens_anything_and_a_lapsed_plan_does_not() {
         let a = Path::new("/nowhere/app-a");
         let b = Path::new("/nowhere/app-b");
-        assert_eq!(decide(&Status::Unavailable, Some(a), b), Decision::Open);
+        let answer = |active| licence::Answer {
+            licence: "ABCDE-FGHJK-LMNPQ-RSTUV".into(),
+            products: vec!["shipscreen".into()],
+            active,
+            ..licence::Answer::default()
+        };
+        assert_eq!(
+            decide(&Status::Pro(answer(true)), Some(a), b),
+            Decision::Open
+        );
+        assert_eq!(
+            decide(&Status::NotPro(answer(false)), Some(a), b),
+            Decision::Locked
+        );
     }
 }

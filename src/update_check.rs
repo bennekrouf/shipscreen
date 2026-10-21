@@ -197,16 +197,27 @@ mod tests {
     #[test]
     fn links_straight_to_the_build_for_each_os() {
         let p = platforms(FEED);
-        assert_eq!(platform_url("macos", &p), "https://x/shipscreen-macos-arm64.dmg?src=updater");
-        assert_eq!(platform_url("windows", &p), "https://x/shipscreen-windows-setup.exe?src=updater");
+        assert_eq!(
+            platform_url("macos", &p),
+            "https://x/shipscreen-macos-arm64.dmg?src=updater"
+        );
+        assert_eq!(
+            platform_url("windows", &p),
+            "https://x/shipscreen-windows-setup.exe?src=updater"
+        );
         // AppImage wins over deb, every time.
-        assert_eq!(platform_url("linux", &p), "https://x/shipscreen-linux-x86_64.AppImage?src=updater");
+        assert_eq!(
+            platform_url("linux", &p),
+            "https://x/shipscreen-linux-x86_64.AppImage?src=updater"
+        );
     }
 
     #[test]
     fn older_feeds_still_offer_the_msi() {
-        let p = platforms(r#"{ "version": "0.1.24", "tag": "v0.1.24",
-            "platforms": { "windows": { "msi": { "url": "https://x/a.msi" } } } }"#);
+        let p = platforms(
+            r#"{ "version": "0.1.24", "tag": "v0.1.24",
+            "platforms": { "windows": { "msi": { "url": "https://x/a.msi" } } } }"#,
+        );
         assert_eq!(platform_url("windows", &p), "https://x/a.msi?src=updater");
     }
 
@@ -221,8 +232,10 @@ mod tests {
 
     #[test]
     fn unknown_format_still_downloads() {
-        let p = platforms(r#"{ "version": "1.0.0", "tag": "v1.0.0",
-            "platforms": { "windows": { "zip": { "url": "https://x/a.zip" } } } }"#);
+        let p = platforms(
+            r#"{ "version": "1.0.0", "tag": "v1.0.0",
+            "platforms": { "windows": { "zip": { "url": "https://x/a.zip" } } } }"#,
+        );
         assert_eq!(platform_url("windows", &p), "https://x/a.zip?src=updater");
     }
 }

@@ -251,26 +251,49 @@ fn env_lookup(dir: &std::path::Path) -> impl Fn(&str) -> Option<String> {
 fn read_creds(dir: &std::path::Path) -> Creds {
     let resolve = env_lookup(dir);
     let value = |label: &'static str, key: &str| match resolve(key) {
-        Some(_) => CredCheck { label, ok: true, detail: format!("{key} is set") },
-        None => CredCheck { label, ok: false, detail: format!("{key} is not set") },
+        Some(_) => CredCheck {
+            label,
+            ok: true,
+            detail: format!("{key} is set"),
+        },
+        None => CredCheck {
+            label,
+            ok: false,
+            detail: format!("{key} is not set"),
+        },
     };
     // `~/…` as the build script expands it
     let expand = |path: String| match path.strip_prefix("~/") {
-        Some(rest) => dirs::home_dir().map(|h| h.join(rest).to_string_lossy().to_string()).unwrap_or(path),
+        Some(rest) => dirs::home_dir()
+            .map(|h| h.join(rest).to_string_lossy().to_string())
+            .unwrap_or(path),
         None => path,
     };
     let file = |label: &'static str, key: &str| match resolve(key).map(expand) {
-        Some(path) if std::path::Path::new(&path).is_file() => {
-            CredCheck { label, ok: true, detail: path }
-        }
-        Some(path) => CredCheck { label, ok: false, detail: format!("File not found: {path}") },
-        None => CredCheck { label, ok: false, detail: format!("{key} is not set") },
+        Some(path) if std::path::Path::new(&path).is_file() => CredCheck {
+            label,
+            ok: true,
+            detail: path,
+        },
+        Some(path) => CredCheck {
+            label,
+            ok: false,
+            detail: format!("File not found: {path}"),
+        },
+        None => CredCheck {
+            label,
+            ok: false,
+            detail: format!("{key} is not set"),
+        },
     };
     Creds {
         app_store: vec![
             value("Key ID", "APP_STORE_CONNECT_API_KEY_KEY_ID"),
             value("Issuer ID", "APP_STORE_CONNECT_API_KEY_ISSUER_ID"),
-            file("Private key (.p8)", "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"),
+            file(
+                "Private key (.p8)",
+                "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH",
+            ),
         ],
         play: vec![file("Service-account JSON", "GOOGLE_PLAY_JSON_KEY")],
     }
@@ -299,17 +322,36 @@ impl AndroidSigning {
             Some(p) if p.is_file() => CredCheck {
                 label: "Upload keystore",
                 ok: true,
-                detail: format!("{}{}", p.display(), if self.keystore_from_env { " (from .env)" } else { "" }),
+                detail: format!(
+                    "{}{}",
+                    p.display(),
+                    if self.keystore_from_env {
+                        " (from .env)"
+                    } else {
+                        ""
+                    }
+                ),
             },
-            Some(p) => CredCheck { label: "Upload keystore", ok: false, detail: format!("File not found: {}", p.display()) },
-            None => CredCheck { label: "Upload keystore", ok: false, detail: "Not set — choose or create one below".into() },
+            Some(p) => CredCheck {
+                label: "Upload keystore",
+                ok: false,
+                detail: format!("File not found: {}", p.display()),
+            },
+            None => CredCheck {
+                label: "Upload keystore",
+                ok: false,
+                detail: "Not set — choose or create one below".into(),
+            },
         };
         let password = CredCheck {
             label: "Keystore password",
             ok: self.password.is_some(),
             detail: match self.password {
                 Some(PasswordSource::Keychain) => format!("In {}", signing::password_store_name()),
-                Some(PasswordSource::Env) if signing::has_password_store() => format!("In the project's .env — {} is safer", signing::password_store_name()),
+                Some(PasswordSource::Env) if signing::has_password_store() => format!(
+                    "In the project's .env — {} is safer",
+                    signing::password_store_name()
+                ),
                 Some(PasswordSource::Env) => "In the project's .env".into(),
                 None => "Not saved yet".into(),
             },
@@ -324,33 +366,58 @@ impl AndroidSigning {
 
 /// Resolve the upload key for a project, returning the password separately
 /// so it never sits in UI state.
-fn resolve_android_signing(dir: &std::path::Path, keystore_setting: &str, alias: &str) -> (AndroidSigning, Option<String>) {
+fn resolve_android_signing(
+    dir: &std::path::Path,
+    keystore_setting: &str,
+    alias: &str,
+) -> (AndroidSigning, Option<String>) {
     let resolve = env_lookup(dir);
     let from_env = resolve("ANDROID_KEYSTORE_PATH");
     let keystore = from_env
         .clone()
-        .or_else(|| (!keystore_setting.trim().is_empty()).then(|| keystore_setting.trim().to_string()))
+        .or_else(|| {
+            (!keystore_setting.trim().is_empty()).then(|| keystore_setting.trim().to_string())
+        })
         .map(|p| signing::expand_home(&p));
     let alias = resolve("ANDROID_KEY_ALIAS").unwrap_or_else(|| alias.to_string());
     let (password, source) = match resolve("ANDROID_KEYSTORE_PASSWORD") {
         Some(p) => (Some(p), Some(PasswordSource::Env)),
-        None => match keystore.as_ref().and_then(|k| signing::keychain_get(&signing::keystore_account(k))) {
+        None => match keystore
+            .as_ref()
+            .and_then(|k| signing::keychain_get(&signing::keystore_account(k)))
+        {
             Some(p) => (Some(p), Some(PasswordSource::Keychain)),
             None => (None, None),
         },
     };
-    (AndroidSigning { keystore, keystore_from_env: from_env.is_some(), alias, password: source }, password)
+    (
+        AndroidSigning {
+            keystore,
+            keystore_from_env: from_env.is_some(),
+            alias,
+            password: source,
+        },
+        password,
+    )
 }
 
 /// The key alias for a project: its own setting, else the lowercase slug.
 fn key_alias(p: &ProjectState) -> String {
     let own = p.android_key_alias.trim();
-    if own.is_empty() { p.project_slug.trim().to_lowercase() } else { own.to_string() }
+    if own.is_empty() {
+        p.project_slug.trim().to_lowercase()
+    } else {
+        own.to_string()
+    }
 }
 
 /// The keys folder: the team setting, else ~/keys.
 fn keys_dir(s: &Settings) -> PathBuf {
-    if s.keys_dir.trim().is_empty() { signing::default_keys_dir() } else { signing::expand_home(s.keys_dir.trim()) }
+    if s.keys_dir.trim().is_empty() {
+        signing::default_keys_dir()
+    } else {
+        signing::expand_home(s.keys_dir.trim())
+    }
 }
 
 /// Everything the encrypted backup covers.
@@ -382,7 +449,9 @@ fn backup_state(s: &Settings) -> BackupState {
     // last_backup_at is "YYYY-MM-DD HH:MM" UTC; compare as seconds.
     let backed_up = parse_utc(&s.last_backup_at);
     match (newest, backed_up) {
-        (Some(n), Some(b)) if n > b + std::time::Duration::from_secs(60) => BackupState::Outdated(s.last_backup_at.clone()),
+        (Some(n), Some(b)) if n > b + std::time::Duration::from_secs(60) => {
+            BackupState::Outdated(s.last_backup_at.clone())
+        }
         _ => BackupState::Current(s.last_backup_at.clone()),
     }
 }
@@ -401,7 +470,10 @@ fn parse_utc(t: &str) -> Option<SystemTime> {
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     let days = era * 146_097 + doe - 719_468;
-    Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(days as u64 * 86_400 + hh * 3600 + mm * 60))
+    Some(
+        SystemTime::UNIX_EPOCH
+            + std::time::Duration::from_secs(days as u64 * 86_400 + hh * 3600 + mm * 60),
+    )
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -413,10 +485,19 @@ struct Artifact {
 
 impl Artifact {
     fn file_name(&self) -> String {
-        self.path.file_name().unwrap_or_default().to_string_lossy().to_string()
+        self.path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string()
     }
     fn summary(&self) -> String {
-        format!("{} · {:.1} MB · {}", self.file_name(), self.size as f64 / 1_048_576.0, ago(self.modified))
+        format!(
+            "{} · {:.1} MB · {}",
+            self.file_name(),
+            self.size as f64 / 1_048_576.0,
+            ago(self.modified)
+        )
     }
 }
 
@@ -432,7 +513,9 @@ struct Artifacts {
 /// each kind is the one that counts.
 fn scan_artifacts(dir: &std::path::Path) -> Artifacts {
     let mut found = Artifacts::default();
-    let Ok(entries) = std::fs::read_dir(dir) else { return found };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return found;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(meta) = entry.metadata() else { continue };
@@ -447,14 +530,21 @@ fn scan_artifacts(dir: &std::path::Path) -> Artifacts {
         };
         let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
         if slot.as_ref().is_none_or(|a| modified > a.modified) {
-            *slot = Some(Artifact { path, modified, size: meta.len() });
+            *slot = Some(Artifact {
+                path,
+                modified,
+                size: meta.len(),
+            });
         }
     }
     found
 }
 
 fn ago(t: SystemTime) -> String {
-    let secs = SystemTime::now().duration_since(t).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = SystemTime::now()
+        .duration_since(t)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     match secs {
         0..=59 => "just now".to_string(),
         60..=3599 => format!("{} min ago", secs / 60),
@@ -623,7 +713,9 @@ impl Ws {
                 if plat.has_ios() {
                     checks.push(!s.apple_identity.trim().is_empty());
                     checks.push(self.profile.read().as_ref().is_some_and(|info| {
-                        profile_checks(info, &p.ios_bundle_id, &s.apple_identity).iter().all(|c| c.ok)
+                        profile_checks(info, &p.ios_bundle_id, &s.apple_identity)
+                            .iter()
+                            .all(|c| c.ok)
                     }));
                     checks.push(creds.app_store_ok() && untested_or_ok(&self.asc_test.read()));
                 }
@@ -642,7 +734,10 @@ impl Ws {
                 }
             }
             Step::Version => {
-                if valid_version(p.version.trim()) && p.ios_build_number > 0 && p.android_version_code > 0 {
+                if valid_version(p.version.trim())
+                    && p.ios_build_number > 0
+                    && p.android_version_code > 0
+                {
                     StepStatus::Done
                 } else {
                     StepStatus::Attention
@@ -666,7 +761,11 @@ impl Ws {
                 }
             }
             Step::Languages => {
-                let filled = p.locales.iter().filter(|l| !p.sources_for(l).is_empty()).count();
+                let filled = p
+                    .locales
+                    .iter()
+                    .filter(|l| !p.sources_for(l).is_empty())
+                    .count();
                 if filled == 0 {
                     StepStatus::Todo
                 } else if filled == p.locales.len() {
@@ -676,7 +775,9 @@ impl Ws {
                 }
             }
             Step::Screenshots => match &*self.gen_phase.read() {
-                AppPhase::GeneratingAi | AppPhase::GeneratingManual | AppPhase::Resizing => StepStatus::Running,
+                AppPhase::GeneratingAi | AppPhase::GeneratingManual | AppPhase::Resizing => {
+                    StepStatus::Running
+                }
                 AppPhase::Error(_) => StepStatus::Attention,
                 _ if p.output_paths.iter().any(|(_, path)| path.exists()) => StepStatus::Done,
                 _ => StepStatus::Todo,
@@ -688,7 +789,11 @@ impl Ws {
                             && (!plat.has_android() || !t.short_description.trim().is_empty())
                     })
                 };
-                let started = |loc: &String| p.store_texts.get(loc).is_some_and(|t| *t != StoreText::default());
+                let started = |loc: &String| {
+                    p.store_texts
+                        .get(loc)
+                        .is_some_and(|t| *t != StoreText::default())
+                };
                 if p.locales.iter().all(complete) {
                     StepStatus::Done
                 } else if p.locales.iter().any(started) {
@@ -700,7 +805,11 @@ impl Ws {
             Step::Submit => {
                 let mut kinds = Vec::new();
                 if plat.has_ios() {
-                    kinds.extend([JobKind::AppStore, JobKind::AppStoreBuild, JobKind::AppStoreReview]);
+                    kinds.extend([
+                        JobKind::AppStore,
+                        JobKind::AppStoreBuild,
+                        JobKind::AppStoreReview,
+                    ]);
                 }
                 if plat.has_android() {
                     kinds.extend([JobKind::GooglePlay, JobKind::PlayRelease]);
@@ -709,7 +818,11 @@ impl Ws {
                 // Shipped = the current version reached review (iOS) or a track (Play).
                 let version = p.version.trim();
                 let shipped = |platform: &str, action: &str| {
-                    p.releases.iter().any(|r| r.platform == platform && r.version == version && r.action.starts_with(action))
+                    p.releases.iter().any(|r| {
+                        r.platform == platform
+                            && r.version == version
+                            && r.action.starts_with(action)
+                    })
                 };
                 if states.iter().any(|s| matches!(s, JobState::Running(_))) {
                     StepStatus::Running
@@ -755,7 +868,12 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
     });
     // Two stages so typing in unrelated project fields doesn't re-run the
     // Keychain lookup: the inputs memo only changes when its values do.
-    let signing_inputs = use_memo(move || (settings.read().android_keystore_path.clone(), key_alias(&proj.read())));
+    let signing_inputs = use_memo(move || {
+        (
+            settings.read().android_keystore_path.clone(),
+            key_alias(&proj.read()),
+        )
+    });
     let android = use_memo(move || {
         refresh.read();
         let (keystore, alias) = signing_inputs();
@@ -765,7 +883,11 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
     let package_mismatches = use_memo(move || {
         refresh.read();
         let expected = android_package();
-        if expected.is_empty() { Vec::new() } else { consistency::package_mismatches(&dir.read(), &expected) }
+        if expected.is_empty() {
+            Vec::new()
+        } else {
+            consistency::package_mismatches(&dir.read(), &expected)
+        }
     });
     let repo = use_memo(move || {
         refresh.read();
@@ -782,10 +904,16 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
     let profile = use_memo(move || {
         refresh.read();
         let path = proj.read().provisioning_profile.trim().to_string();
-        (!path.is_empty()).then(|| read_profile(std::path::Path::new(&path))).flatten()
+        (!path.is_empty())
+            .then(|| read_profile(std::path::Path::new(&path)))
+            .flatten()
     });
     let active_locale = use_signal(|| {
-        proj.peek().locales.first().cloned().unwrap_or_else(|| "en-US".to_string())
+        proj.peek()
+            .locales
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "en-US".to_string())
     });
 
     // What Claude changes through `shipscreen mcp` shows up here.
@@ -811,7 +939,9 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
         } else {
             "document.body.style.overflow = '';"
         };
-        spawn(async move { document::eval(js).await.ok(); });
+        spawn(async move {
+            document::eval(js).await.ok();
+        });
     });
 
     let ws = Ws {
@@ -869,12 +999,18 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
             if let Some(aab) = a.aab.clone() {
                 let (dir, p, keystore) = (dir.clone(), p.clone(), keystore.clone());
                 let checks = tokio::task::spawn_blocking(move || {
-                    let (signing, password) = resolve_android_signing(&dir, &keystore, &key_alias(&p));
-                    let expected = signing
-                        .keystore
-                        .zip(password)
-                        .and_then(|(ks, pw)| signing::upload_key_fingerprint(&ks, &signing.alias, &pw).ok());
-                    verify::verify_aab(&aab.path, &dir, &p.project_slug, &p.android_bundle_id, expected.as_deref())
+                    let (signing, password) =
+                        resolve_android_signing(&dir, &keystore, &key_alias(&p));
+                    let expected = signing.keystore.zip(password).and_then(|(ks, pw)| {
+                        signing::upload_key_fingerprint(&ks, &signing.alias, &pw).ok()
+                    });
+                    verify::verify_aab(
+                        &aab.path,
+                        &dir,
+                        &p.project_slug,
+                        &p.android_bundle_id,
+                        expected.as_deref(),
+                    )
                 })
                 .await
                 .unwrap_or_default();
@@ -884,7 +1020,10 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
             }
             if let Some(ipa) = a.ipa.clone() {
                 let bundle = p.ios_bundle_id.clone();
-                let checks = tokio::task::spawn_blocking(move || verify::verify_ipa(&ipa.path, &bundle)).await.unwrap_or_default();
+                let checks =
+                    tokio::task::spawn_blocking(move || verify::verify_ipa(&ipa.path, &bundle))
+                        .await
+                        .unwrap_or_default();
                 ipa_check.set(checks);
             } else {
                 ipa_check.set(Vec::new());
@@ -908,7 +1047,11 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
     // A platform change can hide the current step (e.g. switching to Desktop).
     let current = {
         let s = *ws.step.read();
-        if steps.contains(&s) { s } else { Step::App }
+        if steps.contains(&s) {
+            s
+        } else {
+            Step::App
+        }
     };
     let idx = steps.iter().position(|s| *s == current).unwrap_or(0);
     let prev = idx.checked_sub(1).map(|i| steps[i]);
@@ -917,7 +1060,11 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
     let proj_name = {
         let name = proj.read().app_name.trim().to_string();
         if name.is_empty() {
-            project_dir.file_name().unwrap_or_default().to_string_lossy().to_string()
+            project_dir
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
         } else {
             name
         }

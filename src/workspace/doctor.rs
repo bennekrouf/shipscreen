@@ -46,13 +46,21 @@ pub(super) struct DoctorItem {
     pub fix: Option<Fix>,
 }
 
-const ANDROID_RUST_TARGETS: [&str; 4] =
-    ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android", "i686-linux-android"];
+const ANDROID_RUST_TARGETS: [&str; 4] = [
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "x86_64-linux-android",
+    "i686-linux-android",
+];
 const IOS_RUST_TARGETS: [&str; 1] = ["aarch64-apple-ios"];
 
 fn output(cmd: &mut Command) -> Option<String> {
     let out = cmd.quiet().output().ok()?;
-    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
     out.status.success().then_some(text)
 }
 
@@ -81,7 +89,13 @@ pub(super) fn locked_dioxus(lock: &str) -> Option<String> {
     let mut lines = lock.lines();
     while let Some(l) = lines.next() {
         if l.trim() == "name = \"dioxus\"" {
-            return lines.next()?.trim().strip_prefix("version = ")?.trim_matches('"').to_string().into();
+            return lines
+                .next()?
+                .trim()
+                .strip_prefix("version = ")?
+                .trim_matches('"')
+                .to_string()
+                .into();
         }
     }
     None
@@ -114,24 +128,36 @@ fn android_home() -> std::path::PathBuf {
 
 fn dir_entries(path: &Path) -> Vec<String> {
     std::fs::read_dir(path)
-        .map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| !n.starts_with('.')).collect())
+        .map(|d| {
+            d.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| !n.starts_with('.'))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 /// Run every check that applies to this project. Blocking — call off the UI thread.
 pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> Vec<DoctorItem> {
     let mut items = Vec::new();
-    let installed_targets: Vec<String> = output(Command::new("rustup").args(["target", "list", "--installed"]))
-        .map(|o| o.lines().map(str::to_string).collect())
-        .unwrap_or_default();
+    let installed_targets: Vec<String> =
+        output(Command::new("rustup").args(["target", "list", "--installed"]))
+            .map(|o| o.lines().map(str::to_string).collect())
+            .unwrap_or_default();
     let missing = |wanted: &[&'static str]| -> Vec<&'static str> {
-        wanted.iter().copied().filter(|t| !installed_targets.iter().any(|i| i == t)).collect()
+        wanted
+            .iter()
+            .copied()
+            .filter(|t| !installed_targets.iter().any(|i| i == t))
+            .collect()
     };
 
     // ── dx and the project's Dioxus version ──────────────────────────────
     // The same dx the Android build runs (Cargo's own copy first).
     let dx = dx_from(output(Command::new(android_build::dx_command()).arg("--version")).as_deref());
-    let lib = std::fs::read_to_string(dir.join("Cargo.lock")).ok().and_then(|l| locked_dioxus(&l));
+    let lib = std::fs::read_to_string(dir.join("Cargo.lock"))
+        .ok()
+        .and_then(|l| locked_dioxus(&l));
     items.push(match (&dx, &lib) {
         (Dx::Missing, _) => DoctorItem {
             section: "Tools",
@@ -167,22 +193,32 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
 
     // ── Android ──────────────────────────────────────────────────────────
     if platform.has_android() {
-        let issues = consistency::dioxus_toml_issues(&std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default());
+        let issues = consistency::dioxus_toml_issues(
+            &std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default(),
+        );
         items.push(DoctorItem {
             section: "Android",
             label: "Dioxus.toml",
             ok: issues.is_empty(),
-            detail: if issues.is_empty() { "[android] settings fine for dx 0.7".into() } else { issues.join(" · ") },
+            detail: if issues.is_empty() {
+                "[android] settings fine for dx 0.7".into()
+            } else {
+                issues.join(" · ")
+            },
             fix: (!issues.is_empty()).then_some(Fix::DioxusToml),
         });
         let sdk = android_home();
-        let target = target_sdk(&std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default());
+        let target =
+            target_sdk(&std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default());
         let ndk = dir_entries(&sdk.join("ndk"));
         let platforms = dir_entries(&sdk.join("platforms"));
         let build_tools = dir_entries(&sdk.join("build-tools"));
         let (gradle, _) = java::project_gradle(dir);
         let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
-        let env_java = env.get("JAVA_HOME").cloned().or_else(|| std::env::var("JAVA_HOME").ok());
+        let env_java = env
+            .get("JAVA_HOME")
+            .cloned()
+            .or_else(|| std::env::var("JAVA_HOME").ok());
         let (jdk, java_notes) = java::for_project(dir, env_java.as_deref());
         let java_problem = match &jdk {
             None => Some(format!(
@@ -204,17 +240,27 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             section: "Android",
             label: "Android SDK",
             ok: sdk.is_dir(),
-            detail: if sdk.is_dir() { sdk.display().to_string() } else { format!("Not found at {} — install Android Studio", sdk.display()) },
+            detail: if sdk.is_dir() {
+                sdk.display().to_string()
+            } else {
+                format!("Not found at {} — install Android Studio", sdk.display())
+            },
             fix: (!sdk.is_dir()).then_some(Fix::AndroidStudio),
         });
         items.push(DoctorItem {
             section: "Android",
             label: "NDK",
             ok: !ndk.is_empty(),
-            detail: if ndk.is_empty() { "Missing — SDK Manager → SDK Tools → NDK (Side by side)".into() } else { ndk.join(", ") },
+            detail: if ndk.is_empty() {
+                "Missing — SDK Manager → SDK Tools → NDK (Side by side)".into()
+            } else {
+                ndk.join(", ")
+            },
             fix: ndk.is_empty().then_some(Fix::AndroidStudio),
         });
-        let has_platform = platforms.iter().any(|p| p == &format!("android-{target}") || p.starts_with(&format!("android-{target}.")));
+        let has_platform = platforms.iter().any(|p| {
+            p == &format!("android-{target}") || p.starts_with(&format!("android-{target}."))
+        });
         items.push(DoctorItem {
             section: "Android",
             label: "Target platform",
@@ -230,7 +276,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             section: "Android",
             label: "Build tools",
             ok: !build_tools.is_empty(),
-            detail: if build_tools.is_empty() { "Missing — SDK Manager → SDK Tools".into() } else { build_tools.join(", ") },
+            detail: if build_tools.is_empty() {
+                "Missing — SDK Manager → SDK Tools".into()
+            } else {
+                build_tools.join(", ")
+            },
             fix: build_tools.is_empty().then_some(Fix::AndroidStudio),
         });
         items.push(DoctorItem {
@@ -240,7 +290,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             detail: match (&jdk, &java_problem) {
                 (_, Some(p)) => p.clone(),
                 (Some(j), None) if java_notes.is_empty() => {
-                    format!("Java {} · {} · works with Gradle {}.{}", j.version, j.source, gradle.0, gradle.1)
+                    format!(
+                        "Java {} · {} · works with Gradle {}.{}",
+                        j.version, j.source, gradle.0, gradle.1
+                    )
                 }
                 (Some(_), None) => java_notes.join(" · "),
                 (None, None) => unreachable!(),
@@ -251,7 +304,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             section: "Android",
             label: "Rust Android targets",
             ok: rust_missing.is_empty(),
-            detail: if rust_missing.is_empty() { "Installed".into() } else { format!("Missing: {}", rust_missing.join(", ")) },
+            detail: if rust_missing.is_empty() {
+                "Installed".into()
+            } else {
+                format!("Missing: {}", rust_missing.join(", "))
+            },
             fix: (!rust_missing.is_empty()).then_some(Fix::RustTargets(rust_missing)),
         });
     }
@@ -272,17 +329,30 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             }
             None => "Xcode not found — install it from the App Store".into(),
         };
-        items.push(DoctorItem { section: "iOS", label: "Xcode", ok: sdk.is_some(), detail, fix: None });
+        items.push(DoctorItem {
+            section: "iOS",
+            label: "Xcode",
+            ok: sdk.is_some(),
+            detail,
+            fix: None,
+        });
         let rust_missing = missing(&IOS_RUST_TARGETS);
         items.push(DoctorItem {
             section: "iOS",
             label: "Rust iOS target",
             ok: rust_missing.is_empty(),
-            detail: if rust_missing.is_empty() { "Installed".into() } else { format!("Missing: {}", rust_missing.join(", ")) },
+            detail: if rust_missing.is_empty() {
+                "Installed".into()
+            } else {
+                format!("Missing: {}", rust_missing.join(", "))
+            },
             fix: (!rust_missing.is_empty()).then_some(Fix::RustTargets(rust_missing)),
         });
-        let identities = output(Command::new("security").args(["find-identity", "-v", "-p", "codesigning"])).unwrap_or_default();
-        let found = !apple_identity.trim().is_empty() && identities.contains(&format!("\"{}\"", apple_identity.trim()));
+        let identities =
+            output(Command::new("security").args(["find-identity", "-v", "-p", "codesigning"]))
+                .unwrap_or_default();
+        let found = !apple_identity.trim().is_empty()
+            && identities.contains(&format!("\"{}\"", apple_identity.trim()));
         items.push(DoctorItem {
             section: "iOS",
             label: "Signing identity",
@@ -307,22 +377,43 @@ pub(super) fn apply(dir: &Path, fix: &Fix) -> Result<String, String> {
         if out.status.success() {
             Ok(())
         } else {
-            Err(String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("failed").to_string())
+            Err(String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .last()
+                .unwrap_or("failed")
+                .to_string())
         }
     };
     match fix {
         Fix::RustTargets(targets) => {
-            done(Command::new("rustup").arg("target").arg("add").args(targets))?;
+            done(
+                Command::new("rustup")
+                    .arg("target")
+                    .arg("add")
+                    .args(targets),
+            )?;
             Ok(format!("Installed {}", targets.join(", ")))
         }
         Fix::DioxusVersion(v) => {
-            done(Command::new("cargo").current_dir(dir).args(["update", "-p", "dioxus", "--precise", v]))?;
-            Ok(format!("Project now uses dioxus {v} (Cargo.lock updated — commit it)"))
+            done(Command::new("cargo").current_dir(dir).args([
+                "update",
+                "-p",
+                "dioxus",
+                "--precise",
+                v,
+            ]))?;
+            Ok(format!(
+                "Project now uses dioxus {v} (Cargo.lock updated — commit it)"
+            ))
         }
         Fix::AndroidStudio => {
-            let not_found = || "Android Studio not found — install it from https://developer.android.com/studio".to_string();
+            let not_found = || {
+                "Android Studio not found — install it from https://developer.android.com/studio"
+                    .to_string()
+            };
             if cfg!(target_os = "macos") {
-                done(Command::new("open").args(["-a", "Android Studio"])).map_err(|_| not_found())?;
+                done(Command::new("open").args(["-a", "Android Studio"]))
+                    .map_err(|_| not_found())?;
             } else {
                 // Where its installer puts it; else on PATH (Linux tarballs, Toolbox).
                 let installed: Vec<std::path::PathBuf> = if cfg!(windows) {
@@ -331,21 +422,34 @@ pub(super) fn apply(dir: &Path, fix: &Fix) -> Result<String, String> {
                         .filter_map(std::env::var_os)
                         .flat_map(|b| {
                             let b = std::path::PathBuf::from(b);
-                            [b.join(r"Android\Android Studio\bin\studio64.exe"), b.join(r"Programs\Android Studio\bin\studio64.exe")]
+                            [
+                                b.join(r"Android\Android Studio\bin\studio64.exe"),
+                                b.join(r"Programs\Android Studio\bin\studio64.exe"),
+                            ]
                         })
                         .collect()
                 } else {
-                    vec!["/opt/android-studio/bin/studio.sh".into(), "/snap/bin/android-studio".into()]
+                    vec![
+                        "/opt/android-studio/bin/studio.sh".into(),
+                        "/snap/bin/android-studio".into(),
+                    ]
                 };
-                let studio = installed.into_iter().find(|p| p.is_file()).unwrap_or_else(|| "android-studio".into());
-                Command::new(studio).quiet().spawn().map_err(|_| not_found())?;
+                let studio = installed
+                    .into_iter()
+                    .find(|p| p.is_file())
+                    .unwrap_or_else(|| "android-studio".into());
+                Command::new(studio)
+                    .quiet()
+                    .spawn()
+                    .map_err(|_| not_found())?;
             }
             Ok("Android Studio opened — use More Actions → SDK Manager".into())
         }
         Fix::DioxusToml => {
             let path = dir.join("Dioxus.toml");
             let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-            std::fs::write(&path, consistency::fix_dioxus_toml(&text)).map_err(|e| e.to_string())?;
+            std::fs::write(&path, consistency::fix_dioxus_toml(&text))
+                .map_err(|e| e.to_string())?;
             Ok("Dioxus.toml updated".into())
         }
         Fix::GoTo(_) | Fix::UseJava(..) => Ok(String::new()),
@@ -358,13 +462,22 @@ mod tests {
 
     #[test]
     fn parses_versions_and_target_sdk() {
-        assert_eq!(dx_from(Some("dioxus 0.7.10 (57d6794)")), Dx::Dioxus("0.7.10".into()));
-        assert_eq!(dx_from(Some("deno 2.9.7 (stable, release, aarch64-apple-darwin)")), Dx::Other("deno".into()));
+        assert_eq!(
+            dx_from(Some("dioxus 0.7.10 (57d6794)")),
+            Dx::Dioxus("0.7.10".into())
+        );
+        assert_eq!(
+            dx_from(Some("deno 2.9.7 (stable, release, aarch64-apple-darwin)")),
+            Dx::Other("deno".into())
+        );
         assert_eq!(dx_from(None), Dx::Missing);
         let lock = "[[package]]\nname = \"dioxus-core\"\nversion = \"0.7.4\"\n\n[[package]]\nname = \"dioxus\"\nversion = \"0.7.10\"\n";
         assert_eq!(locked_dioxus(lock).as_deref(), Some("0.7.10"));
         assert_eq!(locked_dioxus("").as_deref(), None);
-        assert_eq!(target_sdk("[android]\nmin_sdk = 24\ntarget_sdk = 35\n[bundle]\ntarget_sdk = 99\n"), 35);
+        assert_eq!(
+            target_sdk("[android]\nmin_sdk = 24\ntarget_sdk = 35\n[bundle]\ntarget_sdk = 99\n"),
+            35
+        );
         assert_eq!(target_sdk("[bundle]\nidentifier = \"x\"\n"), 36);
     }
 }

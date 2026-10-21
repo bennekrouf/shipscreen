@@ -6,10 +6,12 @@
 use std::path::{Path, PathBuf};
 
 pub(super) const KEY_VAR: &str = "GOOGLE_PLAY_JSON_KEY";
-pub(super) const API_PAGE: &str = "https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com";
+pub(super) const API_PAGE: &str =
+    "https://console.cloud.google.com/apis/library/androidpublisher.googleapis.com";
 pub(super) const ACCOUNTS_PAGE: &str = "https://console.cloud.google.com/iam-admin/serviceaccounts";
 pub(super) const PLAY_USERS_PAGE: &str = "https://play.google.com/console/users-and-permissions";
-pub(super) const HELP_PAGE: &str = "https://developers.google.com/android-publisher/getting_started";
+pub(super) const HELP_PAGE: &str =
+    "https://developers.google.com/android-publisher/getting_started";
 
 /// A service-account key file.
 #[derive(Clone, PartialEq, Debug)]
@@ -41,13 +43,18 @@ pub(super) fn find_keys(keys_dir: &Path) -> Vec<PlayKey> {
     let home = dirs::home_dir().unwrap_or_default();
     let mut found: Vec<PlayKey> = Vec::new();
     for dir in [keys_dir.to_path_buf(), home.join("Downloads")] {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for p in entries.flatten().map(|e| e.path()) {
             let small = p.metadata().is_ok_and(|m| m.len() < 64 * 1024);
             if p.extension().is_some_and(|e| e == "json") && small {
                 if let Some(k) = read_key(&p) {
                     // The same file name is the same key: the keys folder's copy wins.
-                    if !found.iter().any(|f| f.path.file_name() == k.path.file_name()) {
+                    if !found
+                        .iter()
+                        .any(|f| f.path.file_name() == k.path.file_name())
+                    {
                         found.push(k);
                     }
                 }
@@ -60,11 +67,20 @@ pub(super) fn find_keys(keys_dir: &Path) -> Vec<PlayKey> {
 /// Keys other projects already use, whose file still exists.
 pub(super) fn from_other_projects(projects: &[PathBuf], current: &Path) -> Vec<PlayKey> {
     let mut keys: Vec<PlayKey> = Vec::new();
-    for dir in projects.iter().filter(|d| d.as_path() != current && d.is_dir()) {
-        let Some(path) = super::env_lookup(dir)(KEY_VAR) else { continue };
+    for dir in projects
+        .iter()
+        .filter(|d| d.as_path() != current && d.is_dir())
+    {
+        let Some(path) = super::env_lookup(dir)(KEY_VAR) else {
+            continue;
+        };
         if let Some(mut k) = read_key(&super::signing::expand_home(&path)) {
             if !keys.iter().any(|o| o.path == k.path) {
-                k.from = dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                k.from = dir
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 keys.push(k);
             }
         }
@@ -75,7 +91,10 @@ pub(super) fn from_other_projects(projects: &[PathBuf], current: &Path) -> Vec<P
 /// Keep a private copy in the keys folder. Returns where it now lives.
 pub(super) fn keep_in_keys_dir(src: &Path, keys_dir: &Path) -> Result<PathBuf, String> {
     if read_key(src).is_none() {
-        return Err(format!("{} isn't a Google service-account key (JSON)", src.display()));
+        return Err(format!(
+            "{} isn't a Google service-account key (JSON)",
+            src.display()
+        ));
     }
     if src.parent() == Some(keys_dir) {
         return Ok(src.to_path_buf());
@@ -109,10 +128,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("Downloads")).unwrap();
         let src = dir.join("Downloads/tafseel-488419-77ff.json");
-        std::fs::write(&src, key_json("play@tafseel-488419.iam.gserviceaccount.com")).unwrap();
+        std::fs::write(
+            &src,
+            key_json("play@tafseel-488419.iam.gserviceaccount.com"),
+        )
+        .unwrap();
         std::fs::write(dir.join("Downloads/package.json"), r#"{"name":"x"}"#).unwrap();
         let k = read_key(&src).unwrap();
-        assert_eq!(k.client_email, "play@tafseel-488419.iam.gserviceaccount.com");
+        assert_eq!(
+            k.client_email,
+            "play@tafseel-488419.iam.gserviceaccount.com"
+        );
         assert_eq!(k.project_id, "tafseel-488419");
         assert!(read_key(&dir.join("Downloads/package.json")).is_none());
 
