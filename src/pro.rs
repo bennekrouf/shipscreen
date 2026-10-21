@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use dioxus::prelude::*;
 
-use crate::licence::{self, Status};
+use crate::licence::{self, FreeError, Status};
 
 const FREE_APP_FILE: &str = "free_app.json";
 
@@ -104,6 +104,11 @@ pub fn ProButton() -> Element {
             "pro-btn active",
             format!("ShipScreen Pro, {} plan for {}", a.plan.name, a.email),
         ),
+        Status::NotPro(a) if a.is_free() => (
+            "Get Pro…",
+            "pro-btn",
+            format!("Free: {} AI credits left this month. The free version works on one app; Pro on any number", a.credits.left),
+        ),
         Status::NotPro(_) | Status::Offline(_) | Status::Unknown(_) => (
             "✦ RENEW PRO",
             "pro-btn renew",
@@ -136,11 +141,16 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     let mut key = use_signal(String::new);
     let mut error = use_signal(|| Option::<String>::None);
     let mut busy = use_signal(|| false);
+    let mut free_email = use_signal(String::new);
+    let mut free_note = use_signal(|| Option::<String>::None);
+    let mut free_hidden = use_signal(|| false);
     if !(pro.open)() {
         return rsx! {};
     }
     let status = pro.status.read().clone();
-    let asks_number = matches!(status, Status::Free | Status::Unknown(_));
+    let asks_number =
+        matches!(status, Status::Free | Status::Unknown(_)) || status.free_credits().is_some();
+    let offers_free = matches!(status, Status::Free | Status::Unknown(_)) && !free_hidden();
     let pending = pro.pending.read().clone();
     let free = free_app();
     let mut close = move || {
@@ -174,6 +184,23 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
         busy.set(true);
         spawn(async move {
             pro.status.set(licence::refresh(true).await);
+            busy.set(false);
+        });
+    };
+    let mut ask_free = move || {
+        let email = free_email.read().clone();
+        busy.set(true);
+        spawn(async move {
+            match licence::request_free_credits(&email).await {
+                Ok(message) => {
+                    free_note.set(Some(format!(
+                        "{message} Paste the licence number above when it arrives."
+                    )));
+                    error.set(None);
+                }
+                Err(FreeError::Unavailable) => free_hidden.set(true),
+                Err(FreeError::Refused(e)) => error.set(Some(e)),
+            }
             busy.set(false);
         });
     };
@@ -212,6 +239,15 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                         "{a.credits.left} AI credits left this month. {a.renewal()}."
                     }
                 },
+                Status::NotPro(a) if a.is_free() => rsx! {
+                    p {
+                        "Free — "
+                        strong { "{a.credits.left} AI credits" }
+                        " left this month, for "
+                        strong { "{a.email}" }
+                        ". {a.renewal()}."
+                    }
+                },
                 Status::NotPro(a) if !a.active => rsx! {
                     p {
                         "The subscription for "
@@ -247,7 +283,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                         strong { "{p}" }
                         " too, get ShipScreen Pro, or make it your free app instead."
                     }
-                } else if matches!(status, Status::Free) {
+                } else if matches!(status, Status::Free) || status.free_credits().is_some() {
                     p {
                         "The free version works on one app"
                         if let Some(f) = &free_name { ": " strong { "{f}" } }
@@ -272,6 +308,29 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                 }
                 p { class: "settings-hint",
                     "The number is checked with api0 now and once a day. Pro keeps working for a week without a connection."
+                }
+            }
+            if offers_free {
+                div { class: "free-credits",
+                    p { class: "settings-hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
+                    div { class: "free-row",
+                        input {
+                            class: "licence-key",
+                            r#type: "email",
+                            placeholder: "you@example.com",
+                            value: "{free_email}",
+                            oninput: move |e| free_email.set(e.value()),
+                        }
+                        button {
+                            class: "btn",
+                            disabled: free_email.read().trim().is_empty() || busy(),
+                            onclick: move |_| ask_free(),
+                            "Get free AI credits"
+                        }
+                    }
+                    if let Some(n) = free_note.read().as_ref() {
+                        p { class: "pro-ok small", "{n}" }
+                    }
                 }
             }
             if let Some(e) = error.read().as_ref() {
