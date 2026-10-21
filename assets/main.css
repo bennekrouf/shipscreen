@@ -2268,6 +2268,9 @@ a.btn { text-decoration: none; }
 .pro-ok { color: var(--green) !important; }
 .pro-error { color: var(--red) !important; font-size: var(--fs-sm); }
 .pro-actions { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: flex-end; }
+.free-credits { margin-top: 10px; }
+.free-row { display: flex; gap: 6px; align-items: center; }
+.free-row .licence-key { flex: 1; min-width: 0; }
 .licence-key {
     width: 100%;
     padding: var(--s2);
