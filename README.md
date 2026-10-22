@@ -106,6 +106,31 @@ the **Build** step with live output:
 
 The project logo is synced to `assets/icon.png` before each build.
 
+### Projects not built with Dioxus
+
+The scripts above build Dioxus projects (`dx build` / `dx bundle`), and the
+**New Project…** wizard only scaffolds those. Everything else in ShipScreen is
+independent of how the app is written, so an Xcode/Swift or Gradle/Kotlin
+project can use the same workflow — open its folder with **Open Existing…**:
+
+- The App step reads the bundle ID, package and version out of a Dioxus
+  project's own files; for a Swift or Kotlin one those fields stay empty, so
+  fill them in once by hand.
+- **Build it your way.** Either build in Xcode or with Gradle and copy the
+  `.ipa` or `.aab` into the project folder, or put your own
+  `build_ios_distribution.sh` / `build_android_release.sh` there and press
+  Build. A script ShipScreen didn't write is never replaced: it runs as it is,
+  with its output in the jobs drawer, and its version and build number are the
+  ones in the script, not the ones from the Version step.
+- Screenshots, store text and Submit work unchanged. The Build step and the
+  uploads take the newest `.ipa` / `.aab` in the project folder, whatever
+  produced it, and the version and build number that reach the stores are read
+  from that binary. Screenshots are written in fastlane's layout, so a project
+  that already uses fastlane finds them where it expects them.
+
+The logo is still copied to `assets/icon.png` before each build; in a project
+with no `assets` folder that step just logs a warning and the build carries on.
+
 ### App
 
 - **Settings** (gear icon): fal.ai key, device style, inference steps. Stored
