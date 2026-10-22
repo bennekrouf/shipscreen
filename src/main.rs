@@ -1528,6 +1528,11 @@ enum AndroidPublishPhase {
     Error(String),
 }
 
+/// The native title bar, as in every mayorana app: name, version and licence.
+fn window_title(status: &licence::Status) -> String {
+    format!("ShipScreen {}{}", env!("CARGO_PKG_VERSION"), status.title_badge())
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -1558,7 +1563,7 @@ fn main() {
         ))
         .with_window(
             WindowBuilder::new()
-                .with_title("ShipScreen")
+                .with_title(window_title(&licence::current()))
                 .with_window_icon(make_icon())
                 .with_inner_size(LogicalSize::new(1020.0, 860.0))
                 .with_focused(true)
@@ -1762,6 +1767,10 @@ fn App() -> Element {
         open: Signal::new(false),
         status: Signal::new(licence::current()),
         pending: Signal::new(None),
+    });
+    // The title bar follows the licence, however it changes.
+    use_effect(move || {
+        dioxus::desktop::window().set_title(&window_title(&pro.status.read()));
     });
     // The licence is checked with api0 at start, then once a day.
     use_future(move || async move {
