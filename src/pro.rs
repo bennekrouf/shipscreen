@@ -376,7 +376,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                 if status.licence().is_some() {
                     button {
                         class: "btn",
-                        title: "To move the licence to another computer",
+                        title: "Removes it from every Mayorana app on this computer, to move it to another one",
                         onclick: move |_| {
                             licence::deactivate();
                             pro.status.set(licence::current());
