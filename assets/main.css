@@ -606,10 +606,11 @@ h2 {
     background: var(--bg2);
     color: var(--text1);
     border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    padding: var(--s2) var(--s4);
-    font-size: var(--fs-sm);
-    min-height: 34px;
+    /* Off the spacing scale on purpose: the size every app in the family
+       uses for its buttons. */
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-size: 12px;
     cursor: pointer;
     transition: background 0.15s;
     white-space: nowrap;
