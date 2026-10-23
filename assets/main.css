@@ -2267,7 +2267,7 @@ a.btn { text-decoration: none; }
 .mcp-snippet {
     margin: 0; padding: var(--s3) 84px var(--s3) var(--s3);
     border: 1px solid var(--border); border-radius: var(--r-md, 6px); background: var(--surface-log);
-    color: var(--text1); font: 11.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; line-height: 1.5;
+    color: var(--text1); font: 11.5px var(--mono); line-height: 1.5;
     white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;
 }
 .mcp-copy { position: absolute; top: 6px; right: 6px; }
