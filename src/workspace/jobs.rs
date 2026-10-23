@@ -656,6 +656,25 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
     let mut child_env: Vec<(String, String)> =
         env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    // What the generated scripts have baked in, handed to every script as the
+    // environment: a script the developer wrote has no other way to reach the
+    // Version and App steps. The project's own .env still wins.
+    for (key, value) in [
+        ("SHIPSCREEN", "1".to_string()),
+        ("APP_NAME", i.app_name.clone()),
+        ("PROJECT_SLUG", i.project_slug.clone()),
+        ("VERSION", i.version.clone()),
+        ("BUILD_NUMBER", i.ios_build_number.to_string()),
+        ("VERSION_CODE", i.android_version_code.to_string()),
+        ("IOS_BUNDLE_ID", i.ios_bundle_id.clone()),
+        ("ANDROID_PACKAGE_NAME", i.android_bundle_id.clone()),
+        ("SIGNING_IDENTITY", i.identity.clone()),
+        ("PROVISIONING_PROFILE", i.profile.clone()),
+    ] {
+        if !value.trim().is_empty() && !env.contains_key(key) {
+            child_env.push((key.to_string(), value));
+        }
+    }
     let (signing, password) = resolve_android_signing(&dir, &i.keystore_setting, &i.alias);
     if let (false, Some(ks)) = (
         env.contains_key("ANDROID_KEYSTORE_PATH"),
@@ -714,7 +733,8 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     //    on every OS. A script the developer wrote runs as it is.
     let script_path = dir.join(&script_name);
     let own_script = script_path.exists() && !created.contains(&script_name);
-    match android_build::Kind::from_script(&script_name).filter(|_| !own_script) {
+    let dioxus = is_dioxus_project(&dir);
+    match android_build::Kind::from_script(&script_name).filter(|_| !own_script && dioxus) {
         Some(kind) => {
             let find = |key: &str| {
                 child_env
@@ -738,7 +758,16 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
         }
         None => {
             if !script_path.exists() {
-                return Err(format!("{script_name} not found in project directory"));
+                return Err(if dioxus {
+                    format!("{script_name} not found in project directory")
+                } else {
+                    format!(
+                        "{script_name} is not in the project folder. ShipScreen's own build \
+                         scripts build Dioxus projects, so it writes none into this one — put \
+                         your own {script_name} there and it runs as it is, or build the app \
+                         yourself and copy the .ipa or .aab into the project folder."
+                    )
+                });
             }
             if script_name.contains("ios") && !cfg!(target_os = "macos") {
                 return Err("iOS builds need a Mac with Xcode.".into());
@@ -762,8 +791,11 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
 
 /// The build number a successful `script_name` used is taken in the store's
 /// eyes: with auto-increment on, the next release build gets a higher one.
-pub(super) fn bump_after_build(p: &mut ProjectState, script_name: &str) {
-    if !p.auto_increment_build {
+/// A script the developer wrote carries its own numbers, so nothing is bumped
+/// after it — ShipScreen's counters would climb past builds that never used
+/// them.
+pub(super) fn bump_after_build(p: &mut ProjectState, dir: &std::path::Path, script_name: &str) {
+    if !p.auto_increment_build || !script_is_ours(dir, script_name) {
         return;
     }
     match script_name {
@@ -777,7 +809,8 @@ pub(super) fn run_build(ws: Ws, script_name: String) {
     let mut build_phase = ws.build_phase;
     let mut build_log = ws.build_log;
     let mut refresh = ws.refresh;
-    let inputs = BuildInputs::of(&ws.dir(), &ws.proj.read(), &ws.settings.read());
+    let dir = ws.dir();
+    let inputs = BuildInputs::of(&dir, &ws.proj.read(), &ws.settings.read());
     if let Some(problem) = inputs.problem(&script_name) {
         build_phase.set(BuildPhase::Error(problem));
         ws.show_job(JobKind::Build);
@@ -794,7 +827,7 @@ pub(super) fn run_build(ws: Ws, script_name: String) {
         match build(inputs, script_name.clone(), build_log.into()).await {
             Ok(()) => {
                 build_phase.set(BuildPhase::Success(script_name.clone()));
-                ws.update(|p| bump_after_build(p, &script_name));
+                ws.update(|p| bump_after_build(p, &dir, &script_name));
             }
             Err(e) => build_phase.set(BuildPhase::Error(e)),
         }

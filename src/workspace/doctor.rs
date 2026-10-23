@@ -140,10 +140,16 @@ fn dir_entries(path: &Path) -> Vec<String> {
 /// Run every check that applies to this project. Blocking — call off the UI thread.
 pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> Vec<DoctorItem> {
     let mut items = Vec::new();
-    let installed_targets: Vec<String> =
+    // dx, Cargo's targets and Dioxus.toml only matter where the built-in
+    // scripts do the building; an Xcode or Gradle project never runs them.
+    let dioxus = is_dioxus_project(dir);
+    let installed_targets: Vec<String> = if dioxus {
         output(Command::new("rustup").args(["target", "list", "--installed"]))
             .map(|o| o.lines().map(str::to_string).collect())
-            .unwrap_or_default();
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let missing = |wanted: &[&'static str]| -> Vec<&'static str> {
         wanted
             .iter()
@@ -154,7 +160,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
 
     // ── dx and the project's Dioxus version ──────────────────────────────
     // The same dx the Android build runs (Cargo's own copy first).
-    let dx = dx_from(output(Command::new(android_build::dx_command()).arg("--version")).as_deref());
+    let dx = if dioxus {
+        dx_from(output(Command::new(android_build::dx_command()).arg("--version")).as_deref())
+    } else {
+        Dx::Missing
+    };
     let lib = std::fs::read_to_string(dir.join("Cargo.lock"))
         .ok()
         .and_then(|l| locked_dioxus(&l));
@@ -208,8 +218,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             fix: (!issues.is_empty()).then_some(Fix::DioxusToml),
         });
         let sdk = android_home();
-        let target =
-            target_sdk(&std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default());
+        let target = if dioxus {
+            target_sdk(&std::fs::read_to_string(dir.join("Dioxus.toml")).unwrap_or_default())
+        } else {
+            gradle_target_sdk(dir).unwrap_or(36)
+        };
         let ndk = dir_entries(&sdk.join("ndk"));
         let platforms = dir_entries(&sdk.join("platforms"));
         let build_tools = dir_entries(&sdk.join("build-tools"));
@@ -367,7 +380,45 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             fix: (!found).then_some(Fix::GoTo(Step::Accounts)),
         });
     }
+    if !dioxus {
+        // Red crosses for tools this project's build never touches would be
+        // the first thing the Build step shows. What's left — the Android
+        // SDK, Java, Xcode, the signing identity — applies to any project.
+        items.retain(|i| {
+            !matches!(
+                i.label,
+                "Dioxus CLI (dx)"
+                    | "dx matches the project"
+                    | "Dioxus.toml"
+                    | "Rust Android targets"
+                    | "Rust iOS target"
+            )
+        });
+    }
     items
+}
+
+/// `targetSdk` as the project's own Gradle file states it, for a project
+/// ShipScreen doesn't generate the Gradle for: `targetSdk = 35`,
+/// `targetSdkVersion 35` and `targetSdk 35` all read the same.
+fn gradle_target_sdk(dir: &Path) -> Option<u32> {
+    let text = [
+        "app/build.gradle.kts",
+        "app/build.gradle",
+        "build.gradle.kts",
+        "build.gradle",
+    ]
+    .iter()
+    .find_map(|rel| std::fs::read_to_string(dir.join(rel)).ok())?;
+    let line = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("targetSdk"))?;
+    line.chars()
+        .skip_while(|c| !c.is_ascii_digit())
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }
 
 /// Apply a fix. Blocking; returns what happened.
@@ -479,5 +530,21 @@ mod tests {
             35
         );
         assert_eq!(target_sdk("[bundle]\nidentifier = \"x\"\n"), 36);
+    }
+
+    #[test]
+    fn reads_target_sdk_from_a_gradle_project() {
+        let dir = std::env::temp_dir().join("shipscreen-test-gradle-sdk");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("app")).unwrap();
+        assert_eq!(gradle_target_sdk(&dir), None);
+        for (text, want) in [
+            ("android {\n    targetSdk = 35\n}\n", 35),
+            ("android {\n    targetSdkVersion 34\n}\n", 34),
+            ("android {\n    targetSdk 33\n}\n", 33),
+        ] {
+            std::fs::write(dir.join("app/build.gradle.kts"), text).unwrap();
+            assert_eq!(gradle_target_sdk(&dir), Some(want));
+        }
     }
 }
