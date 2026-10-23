@@ -887,44 +887,40 @@ pub(crate) fn McpPopup(on_close: EventHandler<()>) -> Element {
                     on_close.call(());
                 }
             },
-            div { class: "settings-header",
+            div { class: "modal-head",
                 h2 { "Use ShipScreen from Claude" }
-                button {
-                    class: "btn btn-icon",
-                    title: "Close",
-                    aria_label: "Close",
-                    onclick: move |_| on_close.call(()),
-                    {icon_close()}
+                button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
+            }
+            div { class: "modal-body",
+                p { class: "settings-hint mcp-lead",
+                    "Ask Claude to fill in your store listing: write and translate the store text, caption the \
+                     screenshots in every language, bump the version, generate the screenshots and run a build. It \
+                     works on the same projects as this window, and what it changes shows up here within a couple of \
+                     seconds. Uploading to the stores stays here, in the Submit step."
                 }
-            }
-            p { class: "settings-hint mcp-lead",
-                "Ask Claude to fill in your store listing: write and translate the store text, caption the \
-                 screenshots in every language, bump the version, generate the screenshots and run a build. It \
-                 works on the same projects as this window, and what it changes shows up here within a couple of \
-                 seconds. Uploading to the stores stays here, in the Submit step."
-            }
 
-            p { class: "settings-section-title", "1 · Claude Desktop" }
-            p { class: "settings-hint",
-                "Settings \u{2192} Developer \u{2192} Edit Config, paste this in and save, then quit Claude and open \
-                 it again. If the file already has an mcpServers section, add just the shipscreen entry to it."
-            }
-            Snippet { text: desktop.clone() }
-            p { class: "settings-hint mcp-path", "The file: {desktop_config_path()}" }
+                p { class: "settings-section-title", "1 · Claude Desktop" }
+                p { class: "settings-hint",
+                    "Settings \u{2192} Developer \u{2192} Edit Config, paste this in and save, then quit Claude and open \
+                     it again. If the file already has an mcpServers section, add just the shipscreen entry to it."
+                }
+                Snippet { text: desktop.clone() }
+                p { class: "settings-hint mcp-path", "The file: {desktop_config_path()}" }
 
-            p { class: "settings-section-title", "2 · Claude Code" }
-            p { class: "settings-hint", "Run this once in a terminal:" }
-            Snippet { text: code.clone() }
+                p { class: "settings-section-title", "2 · Claude Code" }
+                p { class: "settings-hint", "Run this once in a terminal:" }
+                Snippet { text: code.clone() }
 
-            p { class: "settings-section-title", "3 · Try it" }
-            p { class: "settings-hint",
-                "Ask: \u{201c}What does my project still need before a release?\u{201d}, or \u{201c}Translate the \
-                 store text and captions into French and generate the screenshots.\u{201d}"
-            }
-            p { class: "settings-hint mcp-note",
-                "Claude in the browser (claude.ai) can\u{2019}t use this: it only connects to servers on the internet, \
-                 and ShipScreen runs on your computer. Any other app that speaks MCP can, with the same command: "
-                code { "{command} mcp" }
+                p { class: "settings-section-title", "3 · Try it" }
+                p { class: "settings-hint",
+                    "Ask: \u{201c}What does my project still need before a release?\u{201d}, or \u{201c}Translate the \
+                     store text and captions into French and generate the screenshots.\u{201d}"
+                }
+                p { class: "settings-hint mcp-note",
+                    "Claude in the browser (claude.ai) can\u{2019}t use this: it only connects to servers on the internet, \
+                     and ShipScreen runs on your computer. Any other app that speaks MCP can, with the same command: "
+                    code { "{command} mcp" }
+                }
             }
         }
     }

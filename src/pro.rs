@@ -223,168 +223,171 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     rsx! {
         div { class: "settings-backdrop", onclick: move |_| close() }
         div { class: "settings-popup pro-popup",
-            div { class: "settings-header",
+            div { class: "modal-head",
                 h2 { "ShipScreen Pro" }
+                button { class: "modal-close", title: "Close", onclick: move |_| close(), "×" }
             }
-            match &status {
-                Status::Pro(a) => rsx! {
-                    p { class: "pro-ok",
-                        "Pro is active on this computer: "
-                        strong { "{a.plan.name}" }
-                        " plan for "
-                        strong { "{a.email}" }
-                        "."
+            div { class: "modal-body",
+                match &status {
+                    Status::Pro(a) => rsx! {
+                        p { class: "pro-ok",
+                            "Pro is active on this computer: "
+                            strong { "{a.plan.name}" }
+                            " plan for "
+                            strong { "{a.email}" }
+                            "."
+                        }
+                        p { class: "settings-hint",
+                            "{a.credits.left} AI credits left this month. {a.renewal()}."
+                        }
+                    },
+                    Status::NotPro(a) if a.is_free() => rsx! {
+                        p {
+                            "Free — "
+                            strong { "{a.credits.left} AI credits" }
+                            " left this month, for "
+                            strong { "{a.email}" }
+                            ". {a.renewal()}."
+                        }
+                    },
+                    Status::NotPro(a) if !a.active => rsx! {
+                        p {
+                            "The subscription for "
+                            strong { "{a.email}" }
+                            " isn't active, so ShipScreen runs as the free version. Renew it to have Pro again."
+                        }
+                    },
+                    Status::NotPro(a) => rsx! {
+                        p {
+                            "The "
+                            strong { "{a.plan.name}" }
+                            " plan doesn't include ShipScreen, so it runs as the free version. A plan with ShipScreen makes it Pro."
+                        }
+                    },
+                    Status::Offline(a) => rsx! {
+                        p {
+                            "ShipScreen hasn't been able to check the licence for "
+                            strong { "{a.email}" }
+                            " for a week, so it runs as the free version until it can. Check the connection, then check again."
+                        }
+                    },
+                    Status::Unknown(_) => rsx! {
+                        p { "The licence number on this computer isn't known. Check it against the email, or paste it again." }
+                    },
+                    Status::Free => rsx! {},
+                }
+                if !status.unlimited() {
+                    if let (Some(p), Some(f)) = (&pending_name, &free_name) {
+                        p {
+                            "The free version works on one app, and yours is "
+                            strong { "{f}" }
+                            ". To open "
+                            strong { "{p}" }
+                            " too, get ShipScreen Pro, or make it your free app instead."
+                        }
+                    } else if matches!(status, Status::Free) || status.free_credits().is_some() {
+                        p {
+                            "The free version works on one app"
+                            if let Some(f) = &free_name { ": " strong { "{f}" } }
+                            ", with every step from build to store submission. "
+                            "Pro works on any number of apps, and is the licence for commercial use. "
+                            "It comes with a monthly plan on mayorana.ch."
+                        }
+                    }
+                    button {
+                        class: "btn btn-primary",
+                        onclick: move |_| open_url(licence::BUY_URL),
+                        if asks_number { "Buy ShipScreen Pro" } else { "Renew ShipScreen Pro" }
+                    }
+                }
+                if asks_number {
+                    p { class: "settings-hint", "Already subscribed? Paste the licence number from your email:" }
+                    input {
+                        class: "licence-key",
+                        placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
+                        value: "{key}",
+                        oninput: move |e| key.set(e.value()),
                     }
                     p { class: "settings-hint",
-                        "{a.credits.left} AI credits left this month. {a.renewal()}."
-                    }
-                },
-                Status::NotPro(a) if a.is_free() => rsx! {
-                    p {
-                        "Free — "
-                        strong { "{a.credits.left} AI credits" }
-                        " left this month, for "
-                        strong { "{a.email}" }
-                        ". {a.renewal()}."
-                    }
-                },
-                Status::NotPro(a) if !a.active => rsx! {
-                    p {
-                        "The subscription for "
-                        strong { "{a.email}" }
-                        " isn't active, so ShipScreen runs as the free version. Renew it to have Pro again."
-                    }
-                },
-                Status::NotPro(a) => rsx! {
-                    p {
-                        "The "
-                        strong { "{a.plan.name}" }
-                        " plan doesn't include ShipScreen, so it runs as the free version. A plan with ShipScreen makes it Pro."
-                    }
-                },
-                Status::Offline(a) => rsx! {
-                    p {
-                        "ShipScreen hasn't been able to check the licence for "
-                        strong { "{a.email}" }
-                        " for a week, so it runs as the free version until it can. Check the connection, then check again."
-                    }
-                },
-                Status::Unknown(_) => rsx! {
-                    p { "The licence number on this computer isn't known. Check it against the email, or paste it again." }
-                },
-                Status::Free => rsx! {},
-            }
-            if !status.unlimited() {
-                if let (Some(p), Some(f)) = (&pending_name, &free_name) {
-                    p {
-                        "The free version works on one app, and yours is "
-                        strong { "{f}" }
-                        ". To open "
-                        strong { "{p}" }
-                        " too, get ShipScreen Pro, or make it your free app instead."
-                    }
-                } else if matches!(status, Status::Free) || status.free_credits().is_some() {
-                    p {
-                        "The free version works on one app"
-                        if let Some(f) = &free_name { ": " strong { "{f}" } }
-                        ", with every step from build to store submission. "
-                        "Pro works on any number of apps, and is the licence for commercial use. "
-                        "It comes with a monthly plan on mayorana.ch."
+                        "The number is checked with api0 now and once a day. Pro keeps working for a week without a connection."
                     }
                 }
-                button {
-                    class: "btn btn-primary",
-                    onclick: move |_| open_url(licence::BUY_URL),
-                    if asks_number { "Buy ShipScreen Pro" } else { "Renew ShipScreen Pro" }
+                if offers_free {
+                    div { class: "free-credits",
+                        p { class: "settings-hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
+                        div { class: "free-row",
+                            input {
+                                class: "licence-key",
+                                r#type: "email",
+                                placeholder: "you@example.com",
+                                value: "{free_email}",
+                                oninput: move |e| free_email.set(e.value()),
+                            }
+                            button {
+                                class: "btn",
+                                disabled: free_email.read().trim().is_empty() || busy(),
+                                onclick: move |_| ask_free(),
+                                "Get free AI credits"
+                            }
+                        }
+                        if let Some(n) = free_note.read().as_ref() {
+                            p { class: "pro-ok small", "{n}" }
+                        }
+                    }
                 }
-            }
-            if asks_number {
-                p { class: "settings-hint", "Already subscribed? Paste the licence number from your email:" }
-                input {
-                    class: "licence-key",
-                    placeholder: "ABCDE-FGHJK-LMNPQ-RSTUV",
-                    value: "{key}",
-                    oninput: move |e| key.set(e.value()),
+                if let Some(e) = error.read().as_ref() {
+                    p { class: "pro-error", "{e}" }
                 }
-                p { class: "settings-hint",
-                    "The number is checked with api0 now and once a day. Pro keeps working for a week without a connection."
-                }
-            }
-            if offers_free {
-                div { class: "free-credits",
-                    p { class: "settings-hint", "No plan? Get free AI credits every month, without Pro. The licence number comes by email." }
-                    div { class: "free-row",
-                        input {
-                            class: "licence-key",
-                            r#type: "email",
-                            placeholder: "you@example.com",
-                            value: "{free_email}",
-                            oninput: move |e| free_email.set(e.value()),
+                div { class: "pro-actions",
+                    if asks_number {
+                        button {
+                            class: "btn",
+                            disabled: key.read().trim().is_empty() || busy(),
+                            onclick: move |_| activate(),
+                            "Activate"
+                        }
+                    }
+                    if let (Some(dir), Some(name)) = (pending.clone(), pending_name.clone()) {
+                        button {
+                            class: "btn",
+                            title: "The other app stays on disk; only the free slot moves",
+                            onclick: move |_| {
+                                set_free_app(&dir);
+                                pro.open.set(false);
+                                pro.pending.set(None);
+                                on_open.call(dir.clone());
+                            },
+                            "Make {name} my free app"
+                        }
+                    }
+                    if let (Some(number), false) = (status.licence().map(str::to_owned), asks_number) {
+                        button {
+                            class: "btn",
+                            disabled: busy(),
+                            title: "Change or cancel the plan on mayorana.ch",
+                            onclick: move |_| manage(number.clone()),
+                            "Manage subscription"
                         }
                         button {
                             class: "btn",
-                            disabled: free_email.read().trim().is_empty() || busy(),
-                            onclick: move |_| ask_free(),
-                            "Get free AI credits"
+                            disabled: busy(),
+                            onclick: move |_| check_again(),
+                            "Check again"
                         }
                     }
-                    if let Some(n) = free_note.read().as_ref() {
-                        p { class: "pro-ok small", "{n}" }
+                    if status.licence().is_some() {
+                        button {
+                            class: "btn",
+                            title: "Removes it from every Mayorana app on this computer, to move it to another one",
+                            onclick: move |_| {
+                                licence::deactivate();
+                                pro.status.set(licence::current());
+                            },
+                            "Remove the licence from this computer"
+                        }
                     }
+                    button { class: "btn", onclick: move |_| close(), "Close" }
                 }
-            }
-            if let Some(e) = error.read().as_ref() {
-                p { class: "pro-error", "{e}" }
-            }
-            div { class: "pro-actions",
-                if asks_number {
-                    button {
-                        class: "btn",
-                        disabled: key.read().trim().is_empty() || busy(),
-                        onclick: move |_| activate(),
-                        "Activate"
-                    }
-                }
-                if let (Some(dir), Some(name)) = (pending.clone(), pending_name.clone()) {
-                    button {
-                        class: "btn",
-                        title: "The other app stays on disk; only the free slot moves",
-                        onclick: move |_| {
-                            set_free_app(&dir);
-                            pro.open.set(false);
-                            pro.pending.set(None);
-                            on_open.call(dir.clone());
-                        },
-                        "Make {name} my free app"
-                    }
-                }
-                if let (Some(number), false) = (status.licence().map(str::to_owned), asks_number) {
-                    button {
-                        class: "btn",
-                        disabled: busy(),
-                        title: "Change or cancel the plan on mayorana.ch",
-                        onclick: move |_| manage(number.clone()),
-                        "Manage subscription"
-                    }
-                    button {
-                        class: "btn",
-                        disabled: busy(),
-                        onclick: move |_| check_again(),
-                        "Check again"
-                    }
-                }
-                if status.licence().is_some() {
-                    button {
-                        class: "btn",
-                        title: "Removes it from every Mayorana app on this computer, to move it to another one",
-                        onclick: move |_| {
-                            licence::deactivate();
-                            pro.status.set(licence::current());
-                        },
-                        "Remove the licence from this computer"
-                    }
-                }
-                button { class: "btn", onclick: move |_| close(), "Close" }
             }
         }
     }

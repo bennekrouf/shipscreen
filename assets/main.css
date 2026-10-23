@@ -72,8 +72,6 @@
     /* Elevation is theme-dependent: a 50%-black shadow reads as depth on an
        indigo ground and as a smudge on cream. */
     --shadow-md:      0 8px 24px rgba(0,0,0,0.45);
-    --shadow-lg:      0 20px 60px rgba(0,0,0,0.55);
-    --scrim:          rgba(0,0,0,0.55);
 
     --focus:          #5aa7ff;
 
@@ -144,8 +142,6 @@ body.light {
     --on-accent:      #ffffff;
 
     --shadow-md:      0 8px 24px rgba(23,32,50,0.10);
-    --shadow-lg:      0 20px 50px rgba(23,32,50,0.16);
-    --scrim:          rgba(23,32,50,0.28);
 
     --focus:          #0078d4;
 }
@@ -211,7 +207,7 @@ textarea:focus-visible,
     position: fixed;
     top: var(--s3);
     right: var(--s4);
-    z-index: 1000;
+    z-index: 90; /* under a modal's backdrop, so an open dialog dims it */
     font-size: var(--fs-lead);
     background: var(--bg1);
     border: 1px solid var(--border);
@@ -220,8 +216,8 @@ textarea:focus-visible,
     padding: 0 var(--s2);
     color: var(--text2);
     transition: border-color 0.15s, color 0.15s, background 0.15s;
-    height: 34px;
-    min-width: 34px;
+    height: 30px;
+    min-width: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -725,15 +721,14 @@ h2 {
     background: var(--bg0);
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    padding: var(--s2) var(--s3);
+    padding: 8px 10px;
     color: var(--text1);
-    font-size: var(--fs-body);
-    min-height: 36px;
+    font-size: 12px;
     outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 .text-input:focus { border-color: var(--blue-bg); }
-.text-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.text-input:focus-visible { outline: none; }
 /* --border is a hairline colour: as placeholder text it measured 1.57:1 in
    dark and 1.35:1 in light, i.e. not visible. --text4 is the quiet-but-legible
    tier that exists for exactly this. */
@@ -1017,7 +1012,7 @@ h2 {
 .settings-backdrop {
     position: fixed;
     inset: 0;
-    background: var(--scrim);
+    background: rgba(0, 0, 0, 0.55);
     z-index: 100;
 }
 .settings-popup {
@@ -1027,32 +1022,27 @@ h2 {
     transform: translate(-50%, -50%);
     background: var(--bg1);
     border: 1px solid var(--border);
-    border-radius: var(--r-lg);
-    padding: var(--s6);
-    width: 400px;
+    border-radius: 12px;
+    width: 460px;
     max-width: calc(100vw - var(--s6));
     /* Without these the dialog was simply cut off at both ends of a short
        window — title and close button above the viewport, last fields below
        it, and no way to scroll to either. */
-    max-height: calc(100vh - var(--s7));
+    max-height: 84vh;
     overflow-y: auto;
     overscroll-behavior: contain;
     z-index: 101;
-    box-shadow: var(--shadow-lg);
 }
-.settings-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--s5);
-    position: sticky;
-    top: calc(var(--s6) * -1);
-    background: var(--bg1);
-    padding: var(--s6) 0 var(--s3);
-    margin-top: calc(var(--s6) * -1);
-    z-index: 1;
+.modal-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--border2);
 }
-.settings-header h2 { margin: 0; color: var(--text1); font-size: var(--fs-lead); font-weight: 600; text-transform: none; letter-spacing: 0; }
+.modal-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text1); }
+.modal-close { padding: 0; background: none; border: none; color: var(--text3); font-size: 19px; line-height: 1; cursor: pointer; }
+.modal-close:hover { color: var(--text1); }
+.modal-body { padding: 16px; display: flex; flex-direction: column; gap: 13px; }
+/* Settings fields space themselves with their own margins. */
+.settings-popup-wide .modal-body { display: block; }
 .settings-field { margin-bottom: var(--s5); }
 .settings-field label {
     display: block;
@@ -1288,7 +1278,7 @@ h2 {
 /* ------------------------------------------------------------------ */
 /* Settings popup — wider for build config                             */
 /* ------------------------------------------------------------------ */
-.settings-popup-wide { width: 520px; }
+.settings-popup-wide { width: 620px; }
 
 .settings-section-title {
     color: var(--text2);
@@ -2218,8 +2208,7 @@ a.btn { text-decoration: none; }
     .card-screenshots > h2,
     .card-screenshots > .card-hint { padding: 0 var(--s4); }
     .card-screenshots .source-list { padding: var(--s2) var(--s4) var(--s3); }
-    .settings-popup, .settings-popup-wide { width: auto; left: var(--s3); right: var(--s3); transform: translateY(-50%); padding: var(--s5); }
-    .settings-header { top: calc(var(--s5) * -1); margin-top: calc(var(--s5) * -1); padding-top: var(--s5); }
+    .settings-popup, .settings-popup-wide { width: auto; left: var(--s3); right: var(--s3); transform: translateY(-50%); }
     .subtitle { max-width: 100%; }
 }
 
@@ -2263,9 +2252,7 @@ a.btn { text-decoration: none; }
 .pro-btn:hover { background: var(--bg2); }
 .pro-btn.active { border-color: var(--blue); color: var(--blue); font-weight: 600; letter-spacing: .04em; }
 .pro-btn.renew { border-color: var(--yellow); color: var(--yellow); }
-.pro-popup { display: flex; flex-direction: column; gap: var(--s3); width: 480px; }
 .pro-popup p { margin: 0; color: var(--text2); }
-.pro-popup .settings-header { margin-bottom: 0; }
 .pro-ok { color: var(--green) !important; }
 .pro-error { color: var(--red) !important; font-size: var(--fs-sm); }
 .pro-actions { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: flex-end; }
