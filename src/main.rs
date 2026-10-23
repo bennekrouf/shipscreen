@@ -2457,63 +2457,59 @@ fn SettingsPopup(on_close: EventHandler<()>) -> Element {
                     on_close.call(());
                 }
             },
-            div { class: "settings-header",
+            div { class: "modal-head",
                 h2 { "Settings" }
-                button {
-                    class: "btn btn-icon",
-                    title: "Close settings",
-                    aria_label: "Close settings",
-                    onclick: move |_| on_close.call(()),
-                    {icon_close()}
-                }
+                button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
             }
+            div { class: "modal-body",
 
-            // ---- Screenshot Generation ----
-            p { class: "settings-section-title", "Screenshot Generation" }
+                // ---- Screenshot Generation ----
+                p { class: "settings-section-title", "Screenshot Generation" }
 
-            div { class: "settings-field",
-                label { "fal.ai API Key" }
-                input {
-                    class: "text-input",
-                    r#type: "password",
-                    placeholder: "Enter your fal.ai API key",
-                    value: "{fal_key_val}",
-                    oninput: move |e: Event<FormData>| { settings.write().fal_key = e.value(); save_settings(&settings()); },
+                div { class: "settings-field",
+                    label { "fal.ai API Key" }
+                    input {
+                        class: "text-input",
+                        r#type: "password",
+                        placeholder: "Enter your fal.ai API key",
+                        value: "{fal_key_val}",
+                        oninput: move |e: Event<FormData>| { settings.write().fal_key = e.value(); save_settings(&settings()); },
+                    }
+                    p { class: "settings-hint", "Get a key at fal.ai/dashboard/keys" }
                 }
-                p { class: "settings-hint", "Get a key at fal.ai/dashboard/keys" }
-            }
 
-            div { class: "settings-field",
-                label { "Device Style" }
-                input {
-                    class: "text-input",
-                    placeholder: "modern smartphone",
-                    value: "{phone_style_val}",
-                    oninput: move |e: Event<FormData>| { settings.write().phone_style = e.value(); save_settings(&settings()); },
+                div { class: "settings-field",
+                    label { "Device Style" }
+                    input {
+                        class: "text-input",
+                        placeholder: "modern smartphone",
+                        value: "{phone_style_val}",
+                        oninput: move |e: Event<FormData>| { settings.write().phone_style = e.value(); save_settings(&settings()); },
+                    }
+                    p { class: "settings-hint", "e.g. modern smartphone, iPhone 16, iPad Pro" }
                 }
-                p { class: "settings-hint", "e.g. modern smartphone, iPhone 16, iPad Pro" }
-            }
 
-            div { class: "settings-field",
-                label { "Inference Steps" }
-                input {
-                    class: "text-input",
-                    r#type: "number",
-                    min: "10",
-                    max: "50",
-                    value: "{inference_steps_val}",
-                    oninput: move |e: Event<FormData>| {
-                        if let Ok(v) = e.value().parse::<u32>() {
-                            settings.write().inference_steps = v.clamp(10, 50);
-                            save_settings(&settings());
-                        }
-                    },
+                div { class: "settings-field",
+                    label { "Inference Steps" }
+                    input {
+                        class: "text-input",
+                        r#type: "number",
+                        min: "10",
+                        max: "50",
+                        value: "{inference_steps_val}",
+                        oninput: move |e: Event<FormData>| {
+                            if let Ok(v) = e.value().parse::<u32>() {
+                                settings.write().inference_steps = v.clamp(10, 50);
+                                save_settings(&settings());
+                            }
+                        },
+                    }
+                    p { class: "settings-hint", "More steps = better quality but slower (10–50)" }
                 }
-                p { class: "settings-hint", "More steps = better quality but slower (10–50)" }
-            }
 
-            div { class: "settings-field settings-path",
-                p { class: "settings-hint", "Config: {global_config_path().display()}" }
+                div { class: "settings-field settings-path",
+                    p { class: "settings-hint", "Config: {global_config_path().display()}" }
+                }
             }
         }
     }
