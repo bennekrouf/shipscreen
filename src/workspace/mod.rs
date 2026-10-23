@@ -508,25 +508,20 @@ struct Artifacts {
     apk: Option<Artifact>,
 }
 
-/// The build scripts copy their final bundle into the project root
-/// (`<App>.ipa`, `<slug>_release.aab`, `<slug>-debug.apk`); the newest file of
-/// each kind is the one that counts.
-fn scan_artifacts(dir: &std::path::Path) -> Artifacts {
-    let mut found = Artifacts::default();
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return found;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(meta) = entry.metadata() else { continue };
+impl Artifacts {
+    /// Keep `path` if it's the newest file of its kind seen so far.
+    fn consider(&mut self, path: std::path::PathBuf) {
+        let Ok(meta) = std::fs::metadata(&path) else {
+            return;
+        };
         if !meta.is_file() {
-            continue;
+            return;
         }
         let slot = match path.extension().and_then(|e| e.to_str()) {
-            Some("ipa") => &mut found.ipa,
-            Some("aab") => &mut found.aab,
-            Some("apk") => &mut found.apk,
-            _ => continue,
+            Some("ipa") => &mut self.ipa,
+            Some("aab") => &mut self.aab,
+            Some("apk") => &mut self.apk,
+            _ => return,
         };
         let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
         if slot.as_ref().is_none_or(|a| modified > a.modified) {
@@ -537,7 +532,51 @@ fn scan_artifacts(dir: &std::path::Path) -> Artifacts {
             });
         }
     }
+
+    fn consider_dir(&mut self, dir: &std::path::Path) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            self.consider(entry.path());
+        }
+    }
+}
+
+/// Where a built bundle may be: the project folder, where the build scripts
+/// copy their final bundle (`<App>.ipa`, `<slug>_release.aab`,
+/// `<slug>-debug.apk`), plus the paths the Build step names for a project that
+/// builds itself — Xcode and Gradle leave theirs deep inside a build folder.
+/// The newest file of each kind is the one that counts.
+fn scan_artifacts(dir: &std::path::Path, ios_path: &str, android_path: &str) -> Artifacts {
+    let mut found = Artifacts::default();
+    found.consider_dir(dir);
+    for path in [ios_path, android_path]
+        .into_iter()
+        .filter_map(|p| artifact_location(dir, p))
+    {
+        if path.is_dir() {
+            found.consider_dir(&path);
+        } else {
+            found.consider(path);
+        }
+    }
     found
+}
+
+/// A path from the Build step: empty is the project folder (nothing extra to
+/// look at), `~` is the home folder, and a relative path hangs off the project.
+fn artifact_location(dir: &std::path::Path, setting: &str) -> Option<std::path::PathBuf> {
+    let setting = setting.trim();
+    if setting.is_empty() {
+        return None;
+    }
+    let path = signing::expand_home(setting);
+    Some(if path.is_absolute() {
+        path
+    } else {
+        dir.join(path)
+    })
 }
 
 fn ago(t: SystemTime) -> String {
@@ -569,6 +608,8 @@ pub(crate) struct Ws {
     refresh: Signal<u32>,
     creds: Memo<Creds>,
     artifacts: Memo<Artifacts>,
+    /// Whether the built-in build scripts can build this project at all
+    dioxus: Memo<bool>,
     /// Upload key source for this project (no secret inside)
     android: Memo<AndroidSigning>,
     /// Secret files git tracks in this project
@@ -862,9 +903,22 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
         refresh.read();
         read_creds(&dir.read())
     });
+    let artifact_paths = use_memo(move || {
+        let p = proj.read();
+        (
+            p.ios_artifact_path.trim().to_string(),
+            p.android_artifact_path.trim().to_string(),
+        )
+    });
     let artifacts = use_memo(move || {
         refresh.read();
-        scan_artifacts(&dir.read())
+        let (ios, android) = artifact_paths();
+        scan_artifacts(&dir.read(), &ios, &android)
+    });
+    // Whether the built-in build scripts can build this project at all.
+    let dioxus = use_memo(move || {
+        refresh.read();
+        is_dioxus_project(&dir.read())
     });
     // Two stages so typing in unrelated project fields doesn't re-run the
     // Keychain lookup: the inputs memo only changes when its values do.
@@ -953,6 +1007,7 @@ pub(crate) fn ProjectView(project_dir: PathBuf, on_close: EventHandler<()>) -> E
         refresh,
         creds,
         artifacts,
+        dioxus,
         android,
         tracked_secrets,
         repo,
@@ -1316,5 +1371,47 @@ fn log_class(line: &str) -> &'static str {
         "log-line log-success"
     } else {
         "log-line"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_built_bundle_is_found_where_the_build_step_says_it_is() {
+        let dir = std::env::temp_dir().join("shipscreen-test-artifacts");
+        let _ = std::fs::remove_dir_all(&dir);
+        let exported = dir.join("build/export/Tafseel.ipa");
+        let bundled = dir.join("app/build/outputs/bundle/release/app-release.aab");
+        std::fs::create_dir_all(exported.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::write(&exported, "x").unwrap();
+        std::fs::write(&bundled, "x").unwrap();
+
+        // Nothing in the project folder, and nowhere else named to look.
+        let found = scan_artifacts(&dir, "", "");
+        assert!(found.ipa.is_none() && found.aab.is_none());
+
+        // The file itself for the IPA, the folder it lands in for the AAB.
+        let found = scan_artifacts(
+            &dir,
+            "build/export/Tafseel.ipa",
+            "app/build/outputs/bundle/release",
+        );
+        assert_eq!(found.ipa.map(|a| a.path), Some(exported));
+        assert_eq!(found.aab.map(|a| a.path), Some(bundled));
+
+        // The project folder still counts, and the newest of a kind wins.
+        std::fs::write(dir.join("Tafseel.ipa"), "x").unwrap();
+        let found = scan_artifacts(&dir, "build/export/Tafseel.ipa", "");
+        assert_eq!(found.ipa.map(|a| a.path), Some(dir.join("Tafseel.ipa")));
+
+        assert_eq!(artifact_location(&dir, "   "), None);
+        let absolute = std::env::temp_dir().join("shipscreen-test-elsewhere");
+        assert_eq!(
+            artifact_location(&dir, &absolute.to_string_lossy()),
+            Some(absolute)
+        );
     }
 }

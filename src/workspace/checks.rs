@@ -327,8 +327,73 @@ fn appfile_value(text: &str, call: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// `project.pbxproj` of the first Xcode project in the folder, as text.
+fn xcode_project(dir: &std::path::Path) -> String {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|e| e == "xcodeproj"))
+                .find_map(|p| std::fs::read_to_string(p.join("project.pbxproj")).ok())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+}
+
+/// A build setting from an Xcode project: `KEY = value;`, quotes and
+/// semicolon off. One Xcode works out from another setting (`$(…)`) says
+/// nothing about the app, so it doesn't count.
+fn pbx_value(text: &str, key: &str) -> Option<String> {
+    text.lines()
+        .find_map(|l| {
+            let (k, v) = l.trim().split_once(" = ")?;
+            (k.trim() == key).then(|| v.trim().trim_end_matches(';').trim())
+        })
+        .map(|v| v.trim_matches('"').trim().to_string())
+        .filter(|v| !v.is_empty() && !v.contains("$("))
+}
+
+/// The project's own Gradle file, as text — Kotlin or Groovy, the app module
+/// first, since that is where the identifiers live.
+fn project_gradle_file(dir: &std::path::Path) -> String {
+    [
+        "app/build.gradle.kts",
+        "app/build.gradle",
+        "build.gradle.kts",
+        "build.gradle",
+    ]
+    .iter()
+    .find_map(|rel| std::fs::read_to_string(dir.join(rel)).ok())
+    .unwrap_or_default()
+}
+
+/// `key = "value"` (Kotlin) or `key "value"` (Groovy) from a Gradle file.
+fn gradle_setting(gradle: &str, key: &str) -> Option<String> {
+    super::verify::gradle_value(gradle, key).or_else(|| {
+        gradle.lines().find_map(|l| {
+            let rest = l.trim().strip_prefix(key)?;
+            let value = rest.strip_prefix(char::is_whitespace)?.trim();
+            (!value.is_empty() && !value.starts_with('='))
+                .then(|| value.trim_matches('"').to_string())
+        })
+    })
+}
+
+/// `app_name` from an Android project's strings, the label under the icon.
+fn android_app_label(dir: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join("app/src/main/res/values/strings.xml"))
+        .unwrap_or_default();
+    let (_, rest) = text.split_once("name=\"app_name\"")?;
+    let (_, rest) = rest.split_once('>')?;
+    let (value, _) = rest.split_once('<')?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
 /// What a project already says about itself, from the files it has: build
-/// scripts, Dioxus.toml, Cargo.toml, fastlane, `.env` and the last builds.
+/// scripts, Dioxus.toml, Cargo.toml, an Xcode project, a Gradle file,
+/// fastlane, `.env` and the last builds.
 #[derive(Clone, PartialEq, Debug, Default)]
 pub(super) struct Detected {
     pub app_name: Option<String>,
@@ -347,6 +412,9 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
     let ios_script = read("build_ios_distribution.sh");
     let android_script = read("build_android_release.sh");
     let appfile = read("fastlane/Appfile");
+    // A project built by Xcode or Gradle says all of this in its own files.
+    let xcode = xcode_project(dir);
+    let own_gradle = project_gradle_file(dir);
     let env = load_env(&[dir.join(".env"), dir.join("fastlane").join(".env")]);
     let first = |candidates: Vec<Option<String>>| {
         candidates
@@ -413,12 +481,15 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
             toml_in(&dioxus, "bundle", "name"),
             shell_var(&ios_script, "APP_NAME"),
             toml_in(&dioxus, "application", "name"),
+            pbx_value(&xcode, "INFOPLIST_KEY_CFBundleDisplayName"),
+            android_app_label(dir),
         ]),
         ios_bundle_id: first(vec![
             shell_var(&ios_script, "BUNDLE_ID"),
             appfile_value(&appfile, "app_identifier"),
             env.get("APP_IDENTIFIER").cloned(),
             bundle_identifier.clone(),
+            pbx_value(&xcode, "PRODUCT_BUNDLE_IDENTIFIER"),
         ]),
         // What the last Android build actually used beats what files say.
         android_bundle_id: first(vec![
@@ -428,22 +499,29 @@ pub(super) fn detect_identity(dir: &std::path::Path) -> Detected {
             shell_var(&android_script, "NEW_PACKAGE"),
             toml_in(&dioxus, "android", "package"),
             bundle_identifier,
+            gradle_setting(&own_gradle, "applicationId"),
+            gradle_setting(&own_gradle, "namespace"),
         ]),
         version: first(vec![
             shell_var(&ios_script, "VERSION"),
             toml_in(&dioxus, "mobile.ios", "version"),
             toml_in(&dioxus, "android", "version_name"),
             shell_var(&android_script, "V_NAME"),
+            pbx_value(&xcode, "MARKETING_VERSION"),
+            gradle_setting(&own_gradle, "versionName"),
         ])
         .filter(|v| valid_version(v)),
         has_ios: built("ios")
             || has_file(".ipa")
             || !ios_script.is_empty()
+            || !xcode.is_empty()
+            || has_file(".xcworkspace")
             || root_files.iter().any(|f| f == "Entitlements.plist"),
         has_android: built("android")
             || has_file(".aab")
             || has_file(".apk")
-            || !android_script.is_empty(),
+            || !android_script.is_empty()
+            || !own_gradle.is_empty(),
         slug,
     }
 }
@@ -496,7 +574,8 @@ pub(super) fn seed_identity(p: &mut ProjectState, dir: &std::path::Path) -> bool
 /// Fill in version, build numbers and profile for a project that predates
 /// them, from what used to own each value: the global version setting,
 /// `build_number.txt` (last iOS build used), `Dioxus.toml` (last Android
-/// versionCode used), and the global profile if it fits this app.
+/// versionCode used), and the global profile if it fits this app. A project
+/// built by Xcode or Gradle is read the same way, from its own numbers.
 /// Returns whether anything changed.
 pub(super) fn seed_release_fields(
     p: &mut ProjectState,
@@ -519,12 +598,18 @@ pub(super) fn seed_release_fields(
         let last = std::fs::read_to_string(dir.join("build_number.txt"))
             .ok()
             .and_then(|s| s.trim().parse::<u32>().ok())
+            .or_else(|| {
+                pbx_value(&xcode_project(dir), "CURRENT_PROJECT_VERSION")?
+                    .parse::<u32>()
+                    .ok()
+            })
             .unwrap_or(0);
         p.ios_build_number = last + 1;
         changed = true;
     }
     if p.android_version_code == 0 {
         let last = toml_value(&toml, "version_code")
+            .or_else(|| gradle_setting(&project_gradle_file(dir), "versionCode"))
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0);
         p.android_version_code = last + 1;
@@ -862,6 +947,7 @@ mod tests {
         let dir = std::env::temp_dir().join("shipscreen-test-own-scripts");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Dioxus.toml"), "[bundle]\n").unwrap();
         let mine = "#!/bin/bash\n# my tuned script\nDISPLAY_NAME=\"Tafseel\"\n";
         std::fs::write(dir.join("build_ios_distribution.sh"), mine).unwrap();
         let written = ensure_build_scripts(
@@ -916,5 +1002,129 @@ mod tests {
         assert_eq!(p.android_version_code, 37);
         // Already seeded: nothing changes.
         assert!(!seed_release_fields(&mut p, &dir, &Settings::default()));
+    }
+
+    #[test]
+    fn reads_an_xcode_project_for_what_the_app_is() {
+        let dir = std::env::temp_dir().join("shipscreen-test-xcode");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Tafseel.xcodeproj")).unwrap();
+        std::fs::write(
+            dir.join("Tafseel.xcodeproj/project.pbxproj"),
+            "\t\t\t\tCURRENT_PROJECT_VERSION = 12;\n\
+             \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = Tafseel;\n\
+             \t\t\t\tMARKETING_VERSION = 2.4.1;\n\
+             \t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.mayorana.tafseel;\n\
+             \t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n",
+        )
+        .unwrap();
+        let d = detect_identity(&dir);
+        assert_eq!(d.app_name.as_deref(), Some("Tafseel"));
+        assert_eq!(d.ios_bundle_id.as_deref(), Some("com.mayorana.tafseel"));
+        assert_eq!(d.version.as_deref(), Some("2.4.1"));
+        assert!(d.has_ios && !d.has_android);
+        // A setting Xcode works out from another one is no answer.
+        assert_eq!(
+            pbx_value("\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";", "PRODUCT_NAME"),
+            None
+        );
+
+        // The build number carries on from the one Xcode last used.
+        let mut p = ProjectState::default();
+        assert!(seed_release_fields(&mut p, &dir, &Settings::default()));
+        assert_eq!(p.ios_build_number, 13);
+    }
+
+    #[test]
+    fn reads_a_gradle_project_in_either_language() {
+        let dir = std::env::temp_dir().join("shipscreen-test-gradle");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("app/src/main/res/values")).unwrap();
+        std::fs::write(
+            dir.join("app/src/main/res/values/strings.xml"),
+            "<resources>\n    <string name=\"app_name\">Mufrad</string>\n</resources>\n",
+        )
+        .unwrap();
+        // Groovy: no `=`, and a key that only starts the same doesn't count.
+        std::fs::write(
+            dir.join("app/build.gradle"),
+            "android {\n    defaultConfig {\n        applicationId \"com.mayorana.mufrad\"\n\
+                     applicationIdSuffix \".debug\"\n        versionCode 7\n\
+                     versionName \"1.4.0\"\n    }\n}\n",
+        )
+        .unwrap();
+        let d = detect_identity(&dir);
+        assert_eq!(d.app_name.as_deref(), Some("Mufrad"));
+        assert_eq!(d.android_bundle_id.as_deref(), Some("com.mayorana.mufrad"));
+        assert_eq!(d.version.as_deref(), Some("1.4.0"));
+        assert!(d.has_android && !d.has_ios);
+        let mut p = ProjectState::default();
+        assert!(seed_release_fields(&mut p, &dir, &Settings::default()));
+        assert_eq!(p.android_version_code, 8);
+
+        // Kotlin: the same answers out of `key = value`.
+        std::fs::remove_file(dir.join("app/build.gradle")).unwrap();
+        std::fs::write(
+            dir.join("app/build.gradle.kts"),
+            "android {\n    namespace = \"com.mayorana.mufrad\"\n\
+                 defaultConfig {\n        applicationId = \"com.mayorana.mufrad\"\n\
+                     versionName = \"1.4.0\"\n    }\n}\n",
+        )
+        .unwrap();
+        let d = detect_identity(&dir);
+        assert_eq!(d.android_bundle_id.as_deref(), Some("com.mayorana.mufrad"));
+        assert_eq!(d.version.as_deref(), Some("1.4.0"));
+    }
+
+    #[test]
+    fn writes_no_scripts_into_a_project_the_templates_cannot_build() {
+        let dir = std::env::temp_dir().join("shipscreen-test-swift-project");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // An Xcode project: a folder with no Cargo package in it.
+        std::fs::write(dir.join("Tafseel.xcodeproj"), "").unwrap();
+        assert!(!is_dioxus_project(&dir));
+        let written = ensure_build_scripts(
+            &dir, "Tafseel", "tafseel", "com.a", "com.a", "id", "", "1.1", 13, 1,
+        );
+        assert!(written.is_empty());
+        assert!(!dir.join("build_ios_distribution.sh").exists());
+        assert!(!dir.join("build_android_release.sh").exists());
+
+        // A Cargo project that uses Dioxus is one they can build.
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"tafseel\"\n\n[dependencies]\ndioxus = \"0.7\"\n",
+        )
+        .unwrap();
+        assert!(is_dioxus_project(&dir));
+        assert_eq!(
+            ensure_build_scripts(
+                &dir, "Tafseel", "tafseel", "com.a", "com.a", "id", "", "1.1", 13, 1,
+            )
+            .len(),
+            4
+        );
+    }
+
+    #[test]
+    fn only_a_script_shipscreen_wrote_carries_its_numbers() {
+        let dir = std::env::temp_dir().join("shipscreen-test-whose-script");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Nothing there: ShipScreen's internal Android build ran.
+        assert!(script_is_ours(&dir, "build_android_release.sh"));
+        std::fs::write(
+            dir.join("build_android_release.sh"),
+            "#!/bin/bash\n./gradlew bundleRelease\n",
+        )
+        .unwrap();
+        assert!(!script_is_ours(&dir, "build_android_release.sh"));
+        std::fs::write(
+            dir.join("build_android_release.sh"),
+            format!("#!/bin/bash\n{SCRIPT_MARKER}\n"),
+        )
+        .unwrap();
+        assert!(script_is_ours(&dir, "build_android_release.sh"));
     }
 }

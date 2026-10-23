@@ -113,17 +113,47 @@ The scripts above build Dioxus projects (`dx build` / `dx bundle`), and the
 independent of how the app is written, so an Xcode/Swift or Gradle/Kotlin
 project can use the same workflow — open its folder with **Open Existing…**:
 
-- The App step reads the bundle ID, package and version out of a Dioxus
-  project's own files; for a Swift or Kotlin one those fields stay empty, so
-  fill them in once by hand.
+- The App step fills itself in from the project's own files, whichever they
+  are: an Xcode project's bundle identifier, display name, marketing version
+  and build number, or a Gradle project's `applicationId`, `versionName`,
+  `versionCode` and app label — Groovy or Kotlin, `app/build.gradle` either
+  way. The Version step carries on from the number the project last used.
+- The Build step's checks drop the ones that don't apply: no `dx`, no Rust
+  targets, no `Dioxus.toml`. What's left is what any project needs — the
+  Android SDK, NDK, build tools and Java, Xcode and the signing identity —
+  and the Android API level is read from your own Gradle file.
 - **Build it your way.** Either build in Xcode or with Gradle and copy the
   `.ipa` or `.aab` into the project folder, or put your own
   `build_ios_distribution.sh` / `build_android_release.sh` there and press
-  Build. A script ShipScreen didn't write is never replaced: it runs as it is,
-  with its output in the jobs drawer, and its version and build number are the
-  ones in the script, not the ones from the Version step.
+  Build. ShipScreen writes none of its own scripts into a project it can't
+  build, so the names are yours to take; a script it didn't write is never
+  replaced and runs as it is, with its output in the jobs drawer.
+- **Every script gets the project's settings as environment variables**, which
+  is how your own script reaches the App and Version steps:
+
+  | Variable | From |
+  | --- | --- |
+  | `APP_NAME`, `PROJECT_SLUG` | App step |
+  | `IOS_BUNDLE_ID`, `ANDROID_PACKAGE_NAME` | App step |
+  | `VERSION` | Version step |
+  | `BUILD_NUMBER` | Version step (iOS CFBundleVersion) |
+  | `VERSION_CODE` | Version step (Android versionCode) |
+  | `SIGNING_IDENTITY`, `PROVISIONING_PROFILE` | Accounts step |
+  | `ANDROID_KEYSTORE_PATH`, `ANDROID_KEY_ALIAS` | Android upload key |
+  | `ANDROID_KEYSTORE_PASSWORD` | the system password store |
+  | `JAVA_HOME`, `PATH` | the JDK picked in the Java card |
+  | `SHIPSCREEN`, `CI` | both `1` |
+
+  Anything set in the project's `.env` or `fastlane/.env` wins over these. With
+  auto-increment on, the numbers are bumped only after a build ShipScreen's own
+  scripts ran — a build of yours used whatever its script decided.
+- **Built IPA** and **Built AAB** on the Build step say where your build
+  leaves the file, when that isn't the project folder: a file or a folder,
+  relative to the project or absolute (`~` works). Xcode's export folder and
+  `app/build/outputs/bundle/release` are the usual answers; the APK next to
+  the AAB is found the same way, and nothing needs copying by hand.
 - Screenshots, store text and Submit work unchanged. The Build step and the
-  uploads take the newest `.ipa` / `.aab` in the project folder, whatever
+  uploads take the newest `.ipa` / `.aab` of those places, whatever
   produced it, and the version and build number that reach the stores are read
   from that binary. Screenshots are written in fastlane's layout, so a project
   that already uses fastlane finds them where it expects them.

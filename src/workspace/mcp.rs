@@ -417,7 +417,7 @@ fn describe(dir: &std::path::Path, p: &ProjectState, settings: &Settings) -> Val
         a.as_ref()
             .map(|a| json!({ "path": a.path, "made": ago(a.modified) }))
     };
-    let found = scan_artifacts(dir);
+    let found = scan_artifacts(dir, &p.ios_artifact_path, &p.android_artifact_path);
     let creds = read_creds(dir);
     let inputs = jobs::BuildInputs::of(dir, p, settings);
     let mut builds = serde_json::Map::new();
@@ -810,10 +810,15 @@ async fn run(args: &Value) -> Result<Value, String> {
     match outcome {
         Ok(()) => {
             let numbers = project.change(|p| {
-                jobs::bump_after_build(p, script);
+                jobs::bump_after_build(p, &project.dir, script);
                 Ok(json!({ "next_ios_build_number": p.ios_build_number, "next_android_version_code": p.android_version_code }))
             })?;
-            let found = scan_artifacts(&project.dir);
+            let state = project.state();
+            let found = scan_artifacts(
+                &project.dir,
+                &state.ios_artifact_path,
+                &state.android_artifact_path,
+            );
             let made = match script {
                 "build_ios_distribution.sh" => found.ipa,
                 "build_android_release.sh" => found.aab,

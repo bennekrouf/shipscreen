@@ -333,6 +333,14 @@ struct ProjectState {
     /// Provisioning profile for this app (profiles are per bundle ID)
     #[serde(default)]
     provisioning_profile: String,
+    /// Where a build of the project's own leaves the `.ipa`, when that isn't
+    /// the project folder: a file or a folder, absolute or relative to the
+    /// project. Empty = the project folder, where the built-in scripts put it.
+    #[serde(default)]
+    ios_artifact_path: String,
+    /// The same for the `.aab`, and for the `.apk` beside it.
+    #[serde(default)]
+    android_artifact_path: String,
     // Store listing text and release settings
     /// Per-locale store text: locale code → texts
     #[serde(default)]
@@ -1316,9 +1324,29 @@ fn written_by_us(text: &str) -> bool {
     text.contains("ShipScreen") || text.contains("AppScreens")
 }
 
+/// Whether the built-in build scripts fit this project at all: they run `dx`,
+/// so they need a Cargo package with Dioxus in it. An Xcode or Gradle project
+/// brings its own script instead (see the README), and ShipScreen writes
+/// nothing of its own into it.
+fn is_dioxus_project(dir: &std::path::Path) -> bool {
+    dir.join("Dioxus.toml").is_file()
+        || std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|t| t.contains("dioxus"))
+}
+
+/// Whether `name` is a script ShipScreen wrote, so the build it ran used the
+/// version and build number from the Version step. A script the developer
+/// wrote carries its own numbers; one that isn't there at all means
+/// ShipScreen's internal Android build did the work.
+fn script_is_ours(dir: &std::path::Path, name: &str) -> bool {
+    match std::fs::read_to_string(dir.join(name)) {
+        Ok(text) => written_by_us(&text),
+        Err(_) => true,
+    }
+}
+
 /// (Re)write ShipScreen' build scripts from the latest template, so config
 /// changes and template fixes are always picked up. Scripts the developer
-/// wrote are left alone.
+/// wrote are left alone, and a project the templates cannot build gets none.
 fn ensure_build_scripts(
     project_dir: &PathBuf,
     app_name: &str,
@@ -1331,6 +1359,12 @@ fn ensure_build_scripts(
     ios_build_number: u32,
     android_version_code: u32,
 ) -> Vec<String> {
+    // Only a Dioxus project gets the templates: in any other project they
+    // would be four scripts that cannot build it, and the one whose name
+    // ShipScreen takes is the one the developer needs for their own.
+    if !is_dioxus_project(project_dir) {
+        return Vec::new();
+    }
     let scripts: &[(&str, String)] = &[
         (
             "build_ios_distribution.sh",

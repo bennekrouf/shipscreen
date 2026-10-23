@@ -905,6 +905,7 @@ pub(super) fn BuildStep() -> Element {
     let p = ws.proj.read().clone();
     let plat = p.platform_type.clone();
     let artifacts = ws.artifacts.read().clone();
+    let dioxus = *ws.dioxus.read();
     let running = matches!(*ws.build_phase.read(), BuildPhase::Running(_));
     let running_script = match &*ws.build_phase.read() {
         BuildPhase::Running(name) => name.clone(),
@@ -932,7 +933,11 @@ pub(super) fn BuildStep() -> Element {
 
         div { class: "card build-status-card",
             div { class: "publish-status-row",
-                {job_status_line(ws.job_state(JobKind::Build), "Ready — build scripts are regenerated in the project folder before each build.")}
+                {job_status_line(ws.job_state(JobKind::Build), if dioxus {
+                    "Ready — build scripts are regenerated in the project folder before each build."
+                } else {
+                    "Ready — this project brings its own build scripts, so they are run as they are."
+                })}
             }
             if !ws.build_log.read().is_empty() {
                 button { class: "btn btn-sm", onclick: move |_| ws.show_job(JobKind::Build), "Show log" }
@@ -947,6 +952,11 @@ pub(super) fn BuildStep() -> Element {
                     {next_line(format!("Next: {} ({})", p.version.trim(), p.ios_build_number))}
                     {artifact_line(&artifacts.ipa, "IPA")}
                     {build_checks(ws, ws.ipa_check.read().clone())}
+                    if !dioxus || !p.ios_artifact_path.trim().is_empty() {
+                        {project_field(ws, "Built IPA", "build/MyApp.ipa",
+                            "Where your own build leaves it — a file or a folder, relative to the project. Empty: the project folder.",
+                            |p| &p.ios_artifact_path, |p, v| p.ios_artifact_path = v)}
+                    }
                     if !cfg!(target_os = "macos") {
                         p { class: "settings-hint", "iOS builds need a Mac with Xcode — Apple makes its build and signing tools only for macOS. Everything else for iOS (screenshots, store text, uploading the listing) works here." }
                     }
@@ -971,6 +981,11 @@ pub(super) fn BuildStep() -> Element {
                     {next_line(format!("Next: {} ({})", p.version.trim(), p.android_version_code))}
                     {artifact_line(&artifacts.aab, "AAB")}
                     {build_checks(ws, ws.aab_check.read().clone())}
+                    if !dioxus || !p.android_artifact_path.trim().is_empty() {
+                        {project_field(ws, "Built AAB", "app/build/outputs/bundle/release",
+                            "Where your own build leaves it — a file or a folder, relative to the project. The APK beside it is found too.",
+                            |p| &p.android_artifact_path, |p, v| p.android_artifact_path = v)}
+                    }
                     if !ws.android.read().ok() {
                         ul { class: "check-list",
                             {check_row(ws, false, "Upload key", "Not set up yet — the AAB can't be signed without it".into(), Some(Step::Accounts))}

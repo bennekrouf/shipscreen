@@ -15,6 +15,49 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- **Built IPA** and **Built AAB** on the Build step: where your own build
+  leaves the file, when that isn't the project folder. Point them at Xcode's
+  export folder or `app/build/outputs/bundle/release` — a file or a folder,
+  relative to the project or absolute — and the Build and Submit steps find
+  the newest build there, with nothing to copy by hand. Projects whose builds
+  land in the project folder, as ShipScreen's own scripts do, need neither.
+- The App step now fills itself in from an Xcode or Gradle project too: bundle
+  identifier, package, display name and version, and the build number the
+  project last used, so a project that isn't built with Dioxus no longer
+  starts with empty fields.
+
+### Changed
+
+- A project that isn't built with Dioxus keeps its folder to itself: the Build
+  step no longer writes its own build scripts next to yours, so the names are
+  free for a script of your own. Put `build_ios_distribution.sh` or
+  `build_android_release.sh` in the project folder and the Build step runs it
+  as it is — an Xcode or Gradle build works from there, and the screenshots,
+  store text and Submit steps carry on as usual.
+- A build script you wrote now receives everything the App, Version and
+  Accounts steps know, as environment variables: app name, slug, version, iOS
+  build number, Android versionCode, both identifiers, the signing identity and
+  the provisioning profile. It no longer has to keep its own copy of the
+  version. Anything set in the project's `.env` or `fastlane/.env` still wins,
+  and the README lists the names.
+
+### Fixed
+
+- With auto-increment on, the build number no longer climbs after a build run
+  by a script of your own: that build used the number in the script, not the
+  one in the Version step, so counting it would have skipped a number at the
+  store.
+- Building Android in a project ShipScreen can't build itself now says what to
+  do instead of failing somewhere inside a Dioxus build.
+- The Build step no longer reports missing Dioxus tools as problems in a
+  project that doesn't use them: a project built by Xcode or Gradle is checked
+  for the Android SDK, Java, Xcode and the signing identity, and its Android
+  API level is read from its own Gradle file.
+
 ## [0.1.35] - 2026-10-22
 
 ### Changed
