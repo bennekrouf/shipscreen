@@ -534,6 +534,7 @@ pub(super) struct BuildInputs {
     keystore_setting: String,
     alias: String,
     logo_path: Option<PathBuf>,
+    logo_dest: String,
 }
 
 impl BuildInputs {
@@ -552,6 +553,7 @@ impl BuildInputs {
             keystore_setting: s.android_keystore_path.clone(),
             alias: key_alias(p),
             logo_path: p.logo_path.clone(),
+            logo_dest: p.logo_dest.clone(),
         }
     }
 
@@ -595,28 +597,42 @@ impl BuildInputs {
 /// caller, since each holds the project state its own way.
 pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Result<(), String> {
     let dir = i.dir.clone();
-    // 0. Sync logo → assets/icon.png so the build script always uses the latest logo.
-    // Always re-encode as genuine PNG — the source may be a JPEG renamed to .png,
-    // which Apple's validator rejects even though the extension looks right.
-    if let Some(src) = &i.logo_path {
-        let dest = dir.join("assets").join("icon.png");
-        let src2 = src.clone();
-        let dest2 = dest.clone();
-        match tokio::task::spawn_blocking(move || {
-            image::open(&src2)
-                .map_err(|e| e.to_string())
-                .and_then(|img| {
-                    // Convert to RGB (drop alpha) and save as real PNG
-                    img.to_rgb8()
-                        .save_with_format(&dest2, image::ImageFormat::Png)
-                        .map_err(|e| e.to_string())
-                })
-        })
-        .await
-        {
-            Ok(Ok(_)) => log.push("🖼️  Logo saved as true PNG to assets/icon.png".into()),
-            Ok(Err(e)) => log.push(format!("⚠️  Could not encode logo as PNG: {e}")),
-            Err(e) => log.push(format!("⚠️  Logo task failed: {e}")),
+    // 0. Sync the logo to where this project's build looks for it, so the
+    // build always uses the latest one. Always re-encode as genuine PNG — the
+    // source may be a JPEG renamed to .png, which Apple's validator rejects
+    // even though the extension looks right.
+    let logo_dest = i.logo_dest.trim().to_string();
+    if let (Some(src), Some(dest)) = (&i.logo_path, project_path(&dir, &logo_dest)) {
+        let no_folder = dest
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .is_some_and(|p| !p.is_dir());
+        if no_folder {
+            // A project that keeps its icon somewhere else entirely (an
+            // asset catalogue, res/mipmap-*) simply has no folder of that
+            // name: nothing to copy, and nothing wrong either.
+            log.push(format!(
+                "🖼️  Logo not copied — {logo_dest} isn't a folder in this project"
+            ));
+        } else {
+            let src2 = src.clone();
+            let dest2 = dest.clone();
+            match tokio::task::spawn_blocking(move || {
+                image::open(&src2)
+                    .map_err(|e| e.to_string())
+                    .and_then(|img| {
+                        // Convert to RGB (drop alpha) and save as real PNG
+                        img.to_rgb8()
+                            .save_with_format(&dest2, image::ImageFormat::Png)
+                            .map_err(|e| e.to_string())
+                    })
+            })
+            .await
+            {
+                Ok(Ok(_)) => log.push(format!("🖼️  Logo saved as true PNG to {logo_dest}")),
+                Ok(Err(e)) => log.push(format!("⚠️  Could not encode logo as PNG: {e}")),
+                Err(e) => log.push(format!("⚠️  Logo task failed: {e}")),
+            }
         }
     }
 
@@ -644,10 +660,17 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
     for name in &created {
         log.push(format!("📝 Created {name}"));
     }
-    if !created.contains(&script_name) && dir.join(&script_name).exists() {
+    // The script that will run: a project may bring one with a different
+    // extension, and anything but a `.sh` is the developer's by definition.
+    let script_path = build_script(&dir, &script_name);
+    let own_script = script_path.as_ref().is_some_and(|p| {
+        p.extension().is_some_and(|e| e != "sh") || !created.contains(&script_name)
+    });
+    if let Some(mine) = script_path.as_ref().filter(|_| own_script) {
+        let name = mine.file_name().unwrap_or_default().to_string_lossy();
         log.push(format!(
-            "📌 Using your own {script_name} as it is — ShipScreen only rewrites scripts it wrote. \
-             Its version and build number come from the script, not the Version step."
+            "📌 Using your own {name} as it is — ShipScreen only rewrites scripts it wrote. \
+             The App, Version and Accounts steps reach it through the environment."
         ));
     }
 
@@ -731,8 +754,6 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
 
     // 3. Android builds ShipScreen owns run in ShipScreen itself, the same
     //    on every OS. A script the developer wrote runs as it is.
-    let script_path = dir.join(&script_name);
-    let own_script = script_path.exists() && !created.contains(&script_name);
     let dioxus = is_dioxus_project(&dir);
     match android_build::Kind::from_script(&script_name).filter(|_| !own_script && dioxus) {
         Some(kind) => {
@@ -757,34 +778,67 @@ pub(super) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
             android_build::run(dir.clone(), job, log).await.map(|_| ())
         }
         None => {
-            if !script_path.exists() {
+            let stem = script_name.strip_suffix(".sh").unwrap_or(&script_name);
+            let Some(script_path) = script_path else {
                 return Err(if dioxus {
                     format!("{script_name} not found in project directory")
                 } else {
                     format!(
                         "{script_name} is not in the project folder. ShipScreen's own build \
                          scripts build Dioxus projects, so it writes none into this one — put \
-                         your own {script_name} there and it runs as it is, or build the app \
-                         yourself and copy the .ipa or .aab into the project folder."
+                         your own {stem}.sh (or {stem}.cmd, or {stem}.ps1) there and it runs as \
+                         it is, or build the app yourself and copy the .ipa or .aab into the \
+                         project folder."
                     )
                 });
-            }
+            };
             if script_name.contains("ios") && !cfg!(target_os = "macos") {
                 return Err("iOS builds need a Mac with Xcode.".into());
             }
-            let Some(bash) = find_bash() else {
-                return Err(format!(
-                    "{script_name} is a bash script and this computer has no bash. Install Git for Windows \
-                     (https://git-scm.com/download/win), or delete the script to let ShipScreen build Android itself."
-                ));
+            let ran = script_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let mut cmd = match script_path.extension().and_then(|e| e.to_str()) {
+                Some("cmd" | "bat") => {
+                    let mut cmd = std::process::Command::new("cmd");
+                    cmd.arg("/C").arg(&script_path);
+                    cmd
+                }
+                Some("ps1") => {
+                    let mut cmd = if cfg!(windows) {
+                        let mut cmd = std::process::Command::new("powershell");
+                        cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]);
+                        cmd
+                    } else {
+                        let mut cmd = std::process::Command::new("pwsh");
+                        cmd.args(["-NoProfile", "-File"]);
+                        cmd
+                    };
+                    cmd.arg(&script_path);
+                    cmd
+                }
+                // A bash script, which is what ShipScreen writes itself.
+                _ => {
+                    let Some(bash) = find_bash() else {
+                        return Err(format!(
+                            "{ran} needs bash and this computer has none. Install Git for Windows \
+                             (https://git-scm.com/download/win), put a {stem}.cmd or {stem}.ps1 \
+                             next to it, or delete the script to let ShipScreen build Android itself."
+                        ));
+                    };
+                    let mut cmd = std::process::Command::new(bash);
+                    cmd.arg(&script_path);
+                    cmd
+                }
             };
-            log.push(format!("▶ Running {script_name}…"));
-            let mut cmd = std::process::Command::new(bash);
-            cmd.arg(&script_path).current_dir(&dir).env("CI", "1");
+            log.push(format!("▶ Running {ran}…"));
+            cmd.current_dir(&dir).env("CI", "1");
             for (k, v) in &child_env {
                 cmd.env(k, v);
             }
-            stream_command(cmd, &script_name, log).await
+            stream_command(cmd, &ran, log).await
         }
     }
 }

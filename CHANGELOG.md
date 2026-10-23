@@ -15,6 +15,22 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- **Written to** under App icon: the file the icon is copied to before each
+  build. It stays `assets/icon.png`, where a Dioxus build looks for it, and a
+  project that keeps its icon in an asset catalogue or `res/mipmap-*` can
+  empty the field instead of having a stray PNG written into it.
+
+### Changed
+
+- A build script you wrote can be a `.cmd`, a `.bat` or a `.ps1` instead of a
+  bash script. On Windows those are preferred over a `.sh`, so a build no
+  longer needs Git for Windows installed; a `.ps1` runs on macOS and Linux too
+  where PowerShell is. The jobs drawer names the file that actually ran.
+
 ## [0.1.36] - 2026-10-23
 
 ### Added

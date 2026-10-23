@@ -553,7 +553,7 @@ fn scan_artifacts(dir: &std::path::Path, ios_path: &str, android_path: &str) -> 
     found.consider_dir(dir);
     for path in [ios_path, android_path]
         .into_iter()
-        .filter_map(|p| artifact_location(dir, p))
+        .filter_map(|p| project_path(dir, p))
     {
         if path.is_dir() {
             found.consider_dir(&path);
@@ -564,9 +564,9 @@ fn scan_artifacts(dir: &std::path::Path, ios_path: &str, android_path: &str) -> 
     found
 }
 
-/// A path from the Build step: empty is the project folder (nothing extra to
-/// look at), `~` is the home folder, and a relative path hangs off the project.
-fn artifact_location(dir: &std::path::Path, setting: &str) -> Option<std::path::PathBuf> {
+/// A path a project setting names: empty is nothing to look at, `~` is the
+/// home folder, and a relative path hangs off the project folder.
+fn project_path(dir: &std::path::Path, setting: &str) -> Option<std::path::PathBuf> {
     let setting = setting.trim();
     if setting.is_empty() {
         return None;
@@ -1407,10 +1407,10 @@ mod tests {
         let found = scan_artifacts(&dir, "build/export/Tafseel.ipa", "");
         assert_eq!(found.ipa.map(|a| a.path), Some(dir.join("Tafseel.ipa")));
 
-        assert_eq!(artifact_location(&dir, "   "), None);
+        assert_eq!(project_path(&dir, "   "), None);
         let absolute = std::env::temp_dir().join("shipscreen-test-elsewhere");
         assert_eq!(
-            artifact_location(&dir, &absolute.to_string_lossy()),
+            project_path(&dir, &absolute.to_string_lossy()),
             Some(absolute)
         );
     }

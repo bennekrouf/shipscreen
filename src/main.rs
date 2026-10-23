@@ -286,6 +286,11 @@ struct ProjectState {
     output_paths: Vec<(String, PathBuf)>,
     #[serde(default)]
     logo_path: Option<PathBuf>,
+    /// Where the logo is written before each build, relative to the project
+    /// (or absolute). `assets/icon.png` is where a Dioxus build looks for it;
+    /// empty means the logo isn't copied into the project at all.
+    #[serde(default = "default_logo_dest")]
+    logo_dest: String,
     // Build configuration (per-project)
     #[serde(default)]
     app_name: String, // Display name, e.g. "Abjad"
@@ -403,6 +408,10 @@ fn default_play_track() -> String {
 }
 fn default_play_status() -> String {
     "draft".to_string()
+}
+
+fn default_logo_dest() -> String {
+    "assets/icon.png".to_string()
 }
 
 fn default_true() -> bool {
@@ -1333,14 +1342,34 @@ fn is_dioxus_project(dir: &std::path::Path) -> bool {
         || std::fs::read_to_string(dir.join("Cargo.toml")).is_ok_and(|t| t.contains("dioxus"))
 }
 
-/// Whether `name` is a script ShipScreen wrote, so the build it ran used the
-/// version and build number from the Version step. A script the developer
-/// wrote carries its own numbers; one that isn't there at all means
-/// ShipScreen's internal Android build did the work.
+/// What a build script may be called, in the order this platform prefers:
+/// bash is not the thing to reach for on Windows, so a project can bring
+/// something `cmd` or PowerShell runs instead.
+#[cfg(windows)]
+const SCRIPT_KINDS: [&str; 4] = ["cmd", "bat", "ps1", "sh"];
+#[cfg(not(windows))]
+const SCRIPT_KINDS: [&str; 2] = ["sh", "ps1"];
+
+/// The script that will run for `name` (always a `.sh` name inside
+/// ShipScreen): the first one the project has, in this platform's order.
+fn build_script(dir: &std::path::Path, name: &str) -> Option<PathBuf> {
+    let stem = name.strip_suffix(".sh").unwrap_or(name);
+    SCRIPT_KINDS
+        .iter()
+        .map(|kind| dir.join(format!("{stem}.{kind}")))
+        .find(|path| path.is_file())
+}
+
+/// Whether the script that runs for `name` is one ShipScreen wrote, so the
+/// build used the version and build number from the Version step. A script
+/// the developer wrote carries its own numbers — and anything but a `.sh` is
+/// theirs, since those are the only ones ShipScreen writes. Nothing there at
+/// all means ShipScreen's internal Android build did the work.
 fn script_is_ours(dir: &std::path::Path, name: &str) -> bool {
-    match std::fs::read_to_string(dir.join(name)) {
-        Ok(text) => written_by_us(&text),
-        Err(_) => true,
+    match build_script(dir, name) {
+        None => true,
+        Some(path) if path.extension().is_some_and(|e| e != "sh") => false,
+        Some(path) => std::fs::read_to_string(path).is_ok_and(|t| written_by_us(&t)),
     }
 }
 
