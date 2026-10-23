@@ -2009,7 +2009,7 @@ fn App() -> Element {
                     title: "Dismiss",
                     aria_label: "Dismiss update notice",
                     onclick: move |_| update_dismissed.set(true),
-                    {icon_close()}
+                    "×"
                 }
             }
         }

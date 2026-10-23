@@ -228,80 +228,71 @@ textarea:focus-visible,
 /* ══════════════════════════════════════════════
    Update banner
 ══════════════════════════════════════════════ */
+/* Update, notice and consent banners: GitAgent's, so every app shows them alike. */
 .update-banner {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
+    top: 0; left: 0; right: 0;
     z-index: 999;
-    background: var(--blue-bg);
-    color: var(--on-accent);
-    padding: var(--s2) var(--s4);
+    background: #4fa3ff;
+    color: #fff;
+    padding: 8px 16px;
     display: flex;
     align-items: center;
-    gap: var(--s4);
-    font-size: var(--fs-sm);
-    box-shadow: var(--shadow-md);
+    gap: 16px;
+    font: 13px var(--mono);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.25);
 }
-/* Single line at every width. The banner is fixed, so the offsets below are
-   computed from its height — letting the message wrap made it taller than
-   they allow and it went back to covering the page header on a phone. */
-.update-banner-text {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+.update-banner-text { flex: 1; }
 .update-banner-text strong { font-weight: 700; }
 .update-banner-link {
-    color: var(--on-accent);
+    color: #fff;
     text-decoration: underline;
     font-weight: 600;
-    padding: var(--s1) var(--s3);
+    padding: 4px 10px;
     border: 1px solid rgba(255,255,255,0.4);
-    border-radius: var(--r-sm);
-    transition: background 0.15s;
+    border-radius: 4px;
 }
 .update-banner-link:hover { background: rgba(255,255,255,0.15); }
-.update-banner-link:focus-visible { outline-color: var(--on-accent); }
 .update-banner-dismiss {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: transparent;
     border: none;
-    color: var(--on-accent);
-    line-height: 1;
+    color: #fff;
+    font-size: 20px;
     cursor: pointer;
-    padding: 0 var(--s1);
-    height: 28px;
-    min-width: 28px;
-    border-radius: var(--r-sm);
-    opacity: 0.75;
+    padding: 0 4px;
+    opacity: 0.7;
 }
-.update-banner-dismiss:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+.update-banner-dismiss:hover { opacity: 1; }
 button.update-banner-link {
     background: transparent;
     cursor: pointer;
     font-family: inherit;
     font-size: inherit;
+    height: auto;
 }
-/* Usage-statistics notice. Bottom, not top: the update and notice banners
-   both claim the top edge. */
 .consent-banner {
     position: fixed;
     bottom: 0; left: 0; right: 0;
     z-index: 999;
-    background: var(--blue-bg);
-    color: var(--on-accent);
+    background: #4fa3ff;
+    color: #fff;
     padding: 10px 16px;
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 13px;
+    font: 13px var(--mono);
     box-shadow: 0 -2px 6px rgba(0,0,0,0.25);
 }
+body.light .update-banner, body.light .consent-banner { background: #1e5fb8; }
+/* Single line at every width. The banner is fixed, so the offsets below are
+   computed from its height — letting the message wrap made it taller than
+   they allow and it went back to covering the page header on a phone. */
+.update-banner-text strong { font-weight: 700; }
+.update-banner-link:hover { background: rgba(255,255,255,0.15); }
+.update-banner-link:focus-visible { outline-color: var(--on-accent); }
+.update-banner-dismiss:hover { opacity: 1; background: rgba(255,255,255,0.15); }
+/* Usage-statistics notice. Bottom, not top: the update and notice banners
+   both claim the top edge. */
 .update-banner-dismiss:focus-visible { outline-color: var(--on-accent); }
 
 /* The banner is fixed, so it sat on top of both the page header and the theme
@@ -2230,7 +2221,6 @@ a.btn { text-decoration: none; }
 /* The close mark inside a language tab is subordinate to the tab itself. */
 .lang-tab-remove .icon { width: 13px; height: 13px; }
 .btn-remove .icon { width: 14px; height: 14px; }
-.update-banner-dismiss .icon { width: 14px; height: 14px; }
 .btn-generate .icon,
 .btn-publish .icon { width: 17px; height: 17px; }
 
@@ -2284,3 +2274,10 @@ a.btn { text-decoration: none; }
 .mcp-path { word-break: break-all; }
 .mcp-note { margin-top: var(--s5); padding: var(--s3); border-radius: var(--r-md, 6px); background: var(--bg2); }
 .mcp-note code { word-break: break-all; }
+
+/* With a mouse, the large call-to-action, build and icon buttons share the
+   30px height of every other button; touch keeps its 44px targets above. */
+@media (pointer: fine) {
+    .btn-generate, .btn-publish, .btn-build, .platform-btn { min-height: 30px; height: 30px; padding-top: 0; padding-bottom: 0; font-size: 12px; }
+    .btn-icon { width: 30px; height: 30px; min-height: 30px; }
+}
