@@ -1126,5 +1126,26 @@ mod tests {
         )
         .unwrap();
         assert!(script_is_ours(&dir, "build_android_release.sh"));
+
+        // A script for another shell is the developer's: ShipScreen writes
+        // only .sh, so when one of those runs, the numbers are its own.
+        std::fs::write(
+            dir.join("build_android_release.ps1"),
+            "gradlew bundleRelease\n",
+        )
+        .unwrap();
+        std::fs::remove_file(dir.join("build_android_release.sh")).unwrap();
+        assert_eq!(
+            build_script(&dir, "build_android_release.sh"),
+            Some(dir.join("build_android_release.ps1"))
+        );
+        assert!(!script_is_ours(&dir, "build_android_release.sh"));
+        assert_eq!(build_script(&dir, "build_apk.sh"), None);
+    }
+
+    #[test]
+    fn a_project_from_before_the_setting_still_gets_its_icon_copied() {
+        let p: ProjectState = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.logo_dest, "assets/icon.png");
     }
 }

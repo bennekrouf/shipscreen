@@ -104,7 +104,10 @@ the **Build** step with live output:
 - **Build AAB** — for Google Play.
 - **Build APK** — for a test device.
 
-The project logo is synced to `assets/icon.png` before each build.
+The project logo is written to the file the App step's **Written to** names
+(`assets/icon.png` by default, where a Dioxus build looks for it) before each
+build. A project that keeps its icon somewhere a PNG can't simply be dropped —
+an asset catalogue, `res/mipmap-*` — leaves the field empty.
 
 ### Projects not built with Dioxus
 
@@ -127,7 +130,10 @@ project can use the same workflow — open its folder with **Open Existing…**:
   `build_ios_distribution.sh` / `build_android_release.sh` there and press
   Build. ShipScreen writes none of its own scripts into a project it can't
   build, so the names are yours to take; a script it didn't write is never
-  replaced and runs as it is, with its output in the jobs drawer.
+  replaced and runs as it is, with its output in the jobs drawer. On Windows,
+  name it `build_android_release.cmd` (or `.bat`, or `.ps1`) and it runs
+  without bash — those come first there, and a `.ps1` works on macOS and
+  Linux too if PowerShell is installed.
 - **Every script gets the project's settings as environment variables**, which
   is how your own script reaches the App and Version steps:
 
@@ -158,8 +164,9 @@ project can use the same workflow — open its folder with **Open Existing…**:
   from that binary. Screenshots are written in fastlane's layout, so a project
   that already uses fastlane finds them where it expects them.
 
-The logo is still copied to `assets/icon.png` before each build; in a project
-with no `assets` folder that step just logs a warning and the build carries on.
+The icon is copied to wherever **Written to** points before each build, and
+the build says so in its log; a folder that isn't there means the step is
+skipped, not that the build fails.
 
 ### App
 

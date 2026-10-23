@@ -227,7 +227,7 @@ pub(super) fn AppStep() -> Element {
 
         div { class: "card",
             h2 { "App icon" }
-            p { class: "hint card-hint", "Copied into the project and written to assets/icon.png before every build." }
+            p { class: "hint card-hint", "Copied into the project, and written to the file below before every build." }
             div { class: "logo-upload-row",
                 button { class: "btn", onclick: move |_| jobs::pick_logo(ws), "Choose Icon…" }
                 if let Some(logo) = ws.proj.read().logo_path.clone() {
@@ -252,6 +252,9 @@ pub(super) fn AppStep() -> Element {
                     }
                 }
             }
+            {project_field(ws, "Written to", "assets/icon.png",
+                "Where this project's build looks for the icon, relative to the project. Empty: not copied.",
+                |p| &p.logo_dest, |p, v| p.logo_dest = v)}
         }
     }
 }
