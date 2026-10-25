@@ -15,6 +15,15 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- Installing silently, as IT does for an unattended update with `/VERYSILENT`,
+  no longer hangs when the same version, or an older ShipScreen installed from
+  an .msi, is already there: setup waited on a question nobody could see. It
+  now goes ahead without asking.
+
 ## [0.1.41] - 2026-10-25
 
 ### Changed
