@@ -127,13 +127,15 @@ begin
     Found := FindMsiInstall(HKLM32, ProductCode);
   if not Found then
     Exit;
-  if MsgBox('An older ShipScreen (installed from an .msi) is on this computer.' + #13#10 + #13#10 +
-            'It will be removed first. Your projects and settings are kept.' + #13#10 + #13#10 +
-            'Continue?', mbConfirmation, MB_YESNO) = IDNO then
-  begin
-    Result := False;
-    Exit;
-  end;
+  { Silently, the .msi is simply removed: nobody is there to answer. }
+  if not WizardSilent then
+    if MsgBox('An older ShipScreen (installed from an .msi) is on this computer.' + #13#10 + #13#10 +
+              'It will be removed first. Your projects and settings are kept.' + #13#10 + #13#10 +
+              'Continue?', mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Result := False;
+      Exit;
+    end;
   { msiexec asks for administrator rights itself if that install was per-machine. }
   Exec('msiexec.exe', '/x ' + ProductCode + ' /qb', '', SW_SHOW, ewWaitUntilTerminated, ResultCode);
 end;
@@ -156,7 +158,8 @@ begin
   if not Result then
     Exit;
   Installed := GetInstalledVersion();
-  if (Installed <> '') and (Installed = '{#MyAppVersion}') then
+  { A silent install of the same version just reinstalls: nobody is there to answer. }
+  if (Installed <> '') and (Installed = '{#MyAppVersion}') and not WizardSilent then
     Result := MsgBox('ShipScreen {#MyAppVersion} is already installed.' + #13#10 + #13#10 +
                      'Install it again?', mbConfirmation, MB_YESNO) = IDYES;
   { A newer or older version is simply replaced in place: same AppId, same folder. }
