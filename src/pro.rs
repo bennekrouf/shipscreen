@@ -93,6 +93,13 @@ fn open_url(url: &str) {
     };
 }
 
+/// Sends `true` for each Escape pressed in the page. The handler is kept on
+/// `window` and replaced on each mount, so two never stack.
+const ESCAPE_JS: &str =
+    "if (window._proEscape) window.removeEventListener('keydown', window._proEscape);\
+     window._proEscape = (e) => { if (e.key === 'Escape') dioxus.send(true); };\
+     window.addEventListener('keydown', window._proEscape);";
+
 /// "Get Pro…" while free, "✦ PRO" once licensed; opens the window either way.
 #[component]
 pub fn ProButton() -> Element {
@@ -144,6 +151,22 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     let mut free_email = use_signal(String::new);
     let mut free_note = use_signal(|| Option::<String>::None);
     let mut free_hidden = use_signal(|| false);
+    // Set by an Activate that made ShipScreen Pro, so the window
+    // congratulates rather than just reporting it.
+    let mut activated = use_signal(|| false);
+    // Escape closes the window wherever the focus is: the Pro view has no
+    // field to listen on.
+    use_future(move || async move {
+        let (mut open, mut pending) = (pro.open, pro.pending);
+        let mut keys = document::eval(ESCAPE_JS);
+        while keys.recv::<bool>().await.is_ok() {
+            if *open.peek() {
+                open.set(false);
+                pending.set(None);
+                activated.set(false);
+            }
+        }
+    });
     if !(pro.open)() {
         return rsx! {};
     }
@@ -156,6 +179,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     let mut close = move || {
         pro.open.set(false);
         pro.pending.set(None);
+        activated.set(false);
         error.set(None);
     };
     let mut activate = move || {
@@ -165,12 +189,14 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
             match licence::activate(&pasted).await {
                 Ok(s) => {
                     let unlocked = s.unlimited();
+                    activated.set(matches!(s, Status::Pro(_)));
                     pro.status.set(s);
                     key.set(String::new());
                     error.set(None);
+                    // The app that was waiting opens behind the window, which
+                    // stays up to say Pro is active.
                     if unlocked {
                         if let Some(dir) = pro.pending.take() {
-                            pro.open.set(false);
                             on_open.call(dir);
                         }
                     }
@@ -219,6 +245,36 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
     };
     let free_name = free.as_deref().map(folder_name);
     let pending_name = pending.as_deref().map(folder_name);
+
+    if let Status::Pro(a) = &status {
+        let number = a.licence.clone();
+        return rsx! {
+            div { class: "settings-backdrop", onclick: move |_| close() }
+            div { class: "settings-popup pro-done",
+                button { class: "modal-close", title: "Close", onclick: move |_| close(), "×" }
+                div { class: "pro-done-mark", "✓" }
+                h2 { class: "pro-done-title",
+                    if activated() { "Congratulations, you're Pro!" } else { "You're Pro" }
+                }
+                p { class: "pro-done-sub", "Licence validated." }
+                p { class: "pro-done-meta",
+                    "{a.credits.left} AI credits left this month"
+                    br {}
+                    "{a.renewal()}"
+                }
+                button {
+                    class: "pro-done-manage",
+                    disabled: busy(),
+                    title: "Change or cancel the plan on mayorana.ch",
+                    onclick: move |_| manage(number.clone()),
+                    "Manage subscription"
+                }
+                if let Some(e) = error.read().as_ref() {
+                    p { class: "pro-done-error", "{e}" }
+                }
+            }
+        };
+    }
 
     rsx! {
         div { class: "settings-backdrop", onclick: move |_| close() }
@@ -344,7 +400,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                             class: "btn",
                             disabled: key.read().trim().is_empty() || busy(),
                             onclick: move |_| activate(),
-                            "Activate"
+                            if busy() { span { class: "pro-spinner", title: "Checking the licence" } } else { "Activate" }
                         }
                     }
                     if let (Some(dir), Some(name)) = (pending.clone(), pending_name.clone()) {
