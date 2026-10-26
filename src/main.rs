@@ -32,6 +32,16 @@ mod android_saf;
 // ROBOTO_FONT and the window icon — makes that failure mode impossible.
 const MAIN_CSS: &str = include_str!("../assets/main.css");
 const ROBOTO_FONT: &[u8] = include_bytes!("../assets/Roboto-Bold.ttf");
+/// The first screen's logo, for the same reason: the Windows build ships no `assets/` at all.
+/// Twice the size it is shown at, for high-density screens.
+const LOGO_MARK_PNG: &[u8] = include_bytes!("../assets/logo-mark.png");
+
+/// The first screen's logo as a `data:` address, made once.
+fn logo_mark_src() -> &'static str {
+    use base64::Engine;
+    static SRC: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    SRC.get_or_init(|| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(LOGO_MARK_PNG)))
+}
 
 // ---------------------------------------------------------------------------
 // Locales supported by abjad (fastlane locale code -> display name)
@@ -2229,7 +2239,7 @@ fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
                 div { class: "picker-logo",
                     img {
                         class: "picker-logo-mark",
-                        src: asset!("/assets/icon.png"),
+                        src: logo_mark_src(),
                         alt: "",
                     }
                     div {
