@@ -1,5 +1,7 @@
 # ShipScreen
 
+![ShipScreen's Screenshots step: the iOS and Android sizes to generate, in a manual or AI style](docs/screenshot.png)
+
 Make app-store screenshots, publish them, and build your app — from one
 desktop app. Built with 🦀 Rust + [Dioxus](https://dioxuslabs.com) 0.7.
 
