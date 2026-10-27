@@ -15,6 +15,13 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- You can now use ShipScreen from Codex: open the MCP settings, copy the new
+  command, and paste it into a terminal to add ShipScreen as a server.
+
 ## [0.1.44] - 2026-10-27
 
 ### Changed
