@@ -854,6 +854,12 @@ pub(crate) fn code_command(command: &str) -> String {
     format!("claude mcp add shipscreen --scope user -- \"{command}\" mcp")
 }
 
+/// The one line that adds it to Codex. Its CLI, IDE extension and app share
+/// one list of servers, each one there for every project.
+pub(crate) fn codex_command(command: &str) -> String {
+    format!("codex mcp add shipscreen -- \"{command}\" mcp")
+}
+
 /// Where Claude Desktop keeps its config.
 fn desktop_config_path() -> &'static str {
     if cfg!(target_os = "windows") {
@@ -870,13 +876,14 @@ pub(crate) fn McpPopup(on_close: EventHandler<()>) -> Element {
     let command = command();
     let desktop = desktop_config(&command);
     let code = code_command(&command);
+    let codex = codex_command(&command);
     rsx! {
         div { class: "settings-backdrop", onclick: move |_| on_close.call(()) }
         div {
             class: "settings-popup settings-popup-wide",
             role: "dialog",
             aria_modal: "true",
-            aria_label: "Use ShipScreen from Claude",
+            aria_label: "Use ShipScreen from Claude or Codex",
             tabindex: "-1",
             onmounted: move |e: Event<MountedData>| {
                 spawn(async move { let _ = e.set_focus(true).await; });
@@ -888,7 +895,7 @@ pub(crate) fn McpPopup(on_close: EventHandler<()>) -> Element {
                 }
             },
             div { class: "modal-head",
-                h2 { "Use ShipScreen from Claude" }
+                h2 { "Use ShipScreen from Claude or Codex" }
                 button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
             }
             div { class: "modal-body",
@@ -911,7 +918,11 @@ pub(crate) fn McpPopup(on_close: EventHandler<()>) -> Element {
                 p { class: "settings-hint", "Run this once in a terminal:" }
                 Snippet { text: code.clone() }
 
-                p { class: "settings-section-title", "3 · Try it" }
+                p { class: "settings-section-title", "3 · Codex" }
+                p { class: "settings-hint", "Run this once in a terminal:" }
+                Snippet { text: codex.clone() }
+
+                p { class: "settings-section-title", "4 · Try it" }
                 p { class: "settings-hint",
                     "Ask: \u{201c}What does my project still need before a release?\u{201d}, or \u{201c}Translate the \
                      store text and captions into French and generate the screenshots.\u{201d}"
@@ -1005,6 +1016,14 @@ mod tests {
         assert_eq!(
             code_command("/A B/shipscreen"),
             "claude mcp add shipscreen --scope user -- \"/A B/shipscreen\" mcp"
+        );
+    }
+
+    #[test]
+    fn the_codex_command_quotes_a_path_with_spaces() {
+        assert_eq!(
+            codex_command("/A B/shipscreen"),
+            "codex mcp add shipscreen -- \"/A B/shipscreen\" mcp"
         );
     }
 }
