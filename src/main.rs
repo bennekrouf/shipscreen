@@ -9,17 +9,13 @@ use dioxus::prelude::*;
 use image::imageops::FilterType;
 use image::{Rgba, RgbaImage};
 use imageproc::drawing::{draw_text_mut, text_size};
-use licence::StatusExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 mod kit;
 mod licence;
-mod notice;
 mod pro;
-mod telemetry;
 mod toolpath;
-mod update_check;
 mod workspace;
 
 use workspace::ProjectView;
@@ -427,7 +423,7 @@ fn window_title(status: &licence::Status) -> String {
     format!(
         "ShipScreen {}{}",
         env!("CARGO_PKG_VERSION"),
-        status.title_badge()
+        licence::title_badge(status)
     )
 }
 
