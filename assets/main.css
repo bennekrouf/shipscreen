@@ -100,6 +100,17 @@
     --mono: 'SF Mono', 'Menlo', 'Monaco', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
+/* The shared header's colours (desktop-kit). On body, so body.light below
+   changes them too. */
+body {
+    --kit-bar: var(--bg1);
+    --kit-line: var(--border);
+    --kit-hover: var(--bg2);
+    --kit-text: var(--text1);
+    --kit-muted: var(--text3);
+    --kit-accent: var(--blue);
+}
+
 body.light {
     --bg0:            #f6f8fc;
     --bg1:            #ffffff;
@@ -202,37 +213,13 @@ textarea:focus-visible,
     }
 }
 
-/* Theme toggle (top-right) — matches ais-runner. */
-.btn-theme {
-    position: fixed;
-    top: var(--s3);
-    right: var(--s4);
-    z-index: 90; /* under a modal's backdrop, so an open dialog dims it */
-    font-size: var(--fs-lead);
-    background: var(--bg1);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    padding: 0 var(--s2);
-    color: var(--text2);
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
-    height: 30px;
-    min-width: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.btn-theme:hover { border-color: var(--blue); color: var(--blue); }
-.btn-theme:active { background: var(--bg2); }
-
 /* ══════════════════════════════════════════════
    Update banner
 ══════════════════════════════════════════════ */
 /* Update, notice and consent banners: GitAgent's, so every app shows them alike. */
 .update-banner {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 999;
+    /* In the page, under the header: it pushes the screen down while shown. */
+    position: relative;
     background: #4fa3ff;
     color: #fff;
     padding: 8px 16px;
@@ -295,18 +282,12 @@ body.light .update-banner, body.light .consent-banner { background: #1e5fb8; }
    both claim the top edge. */
 .update-banner-dismiss:focus-visible { outline-color: var(--on-accent); }
 
-/* The banner is fixed, so it sat on top of both the page header and the theme
-   toggle (which shares its top-right corner). It renders before its siblings,
-   so the sibling combinator can move everything it would otherwise cover —
-   no extra state and no wrapper class needed. */
-.update-banner ~ .btn-theme { top: 56px; }
-.update-banner ~ .picker-screen { padding-top: 84px; }
 
 /* ------------------------------------------------------------------ */
 /* Project Picker                                                       */
 /* ------------------------------------------------------------------ */
 .picker-screen {
-    min-height: 100vh;
+    min-height: calc(100vh - var(--kit-header-h));
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -1614,15 +1595,14 @@ h2 {
 .ws {
     display: grid;
     grid-template-columns: 232px minmax(0, 1fr);
-    min-height: 100vh;
+    min-height: calc(100vh - var(--kit-header-h));
 }
-.update-banner ~ .ws { padding-top: 44px; }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────── */
 .ws-side {
     position: sticky;
-    top: 0;
-    height: 100vh;
+    top: var(--kit-header-h);
+    height: calc(100vh - var(--kit-header-h));
     display: flex;
     flex-direction: column;
     background: var(--bg1);
@@ -1631,7 +1611,6 @@ h2 {
     gap: var(--s4);
     overflow-y: auto;
 }
-.update-banner ~ .ws .ws-side { top: 44px; height: calc(100vh - 44px); }
 
 .ws-side-head {
     display: flex;
@@ -1722,15 +1701,7 @@ h2 {
 .mark-attn { border-color: var(--yellow); color: var(--yellow); }
 .mark-run  { border-color: var(--blue); }
 
-.ws-side-foot {
-    padding-top: var(--s3);
-    border-top: 1px solid var(--border2);
-}
-.ws-settings-btn { width: 100%; justify-content: flex-start; }
 a.btn { text-decoration: none; }
-.feedback-line { margin-top: var(--s3); align-self: center; text-align: center; font-size: var(--fs-sm); color: var(--text3); }
-.feedback-line a { color: var(--text3); text-decoration: none; }
-.feedback-line a:hover { color: var(--text2); text-decoration: underline; }
 
 /* ── Step column ─────────────────────────────────────────────────────── */
 .ws-main {
@@ -2182,7 +2153,7 @@ a.btn { text-decoration: none; }
     .ws-nav { flex-direction: row; overflow-x: auto; gap: var(--s1); }
     .ws-group-label { display: none; }
     .ws-step { width: auto; flex-shrink: 0; }
-    .ws-side-foot { display: none; }
+
     .ws-content { padding: var(--s5) var(--s4) var(--s6); }
     .step-head { padding-right: 0; }
     .step-head h1 { font-size: var(--fs-h1); }
@@ -2207,7 +2178,7 @@ a.btn { text-decoration: none; }
    compact chrome. */
 @media (pointer: coarse) {
     .btn, .btn-sm, .platform-btn, .picker-open-btn, .theme-chip { min-height: 44px; }
-    .btn-icon, .btn-remove, .lang-tab-add, .btn-theme { width: 44px; height: 44px; min-height: 44px; }
+    .btn-icon, .btn-remove, .lang-tab-add { width: 44px; height: 44px; min-height: 44px; }
     .lang-tab-remove { width: 36px; height: 36px; }
     .lang-tab { min-height: 48px; }
     .lang-picker-item { min-height: 44px; }
@@ -2226,22 +2197,7 @@ a.btn { text-decoration: none; }
 
 /* ------------------------------------------------------------------ */
 /* ShipScreen Pro                                                       */
-/* ------------------------------------------------------------------ */
-.pro-btn {
-    margin-top: var(--s4);
-    align-self: center;
-    padding: var(--s1) var(--s3);
-    border-radius: var(--r-sm);
-    border: 1px solid var(--violet);
-    background: transparent;
-    color: var(--violet);
-    font: inherit;
-    font-size: var(--fs-sm);
-    cursor: pointer;
-}
-.pro-btn:hover { background: var(--bg2); }
-.pro-btn.active { border-color: var(--blue); color: var(--blue); font-weight: 600; letter-spacing: .04em; }
-.pro-btn.renew { border-color: var(--yellow); color: var(--yellow); }
+
 .pro-popup p { margin: 0; color: var(--text2); }
 .pro-ok { color: var(--green) !important; }
 .pro-error { color: var(--red) !important; font-size: var(--fs-sm); }

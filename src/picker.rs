@@ -141,8 +141,6 @@ pub(super) fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
                     }
                     {open_existing_button(on_open)}
                 }
-                pro::ProButton {}
-                feedback::FeedbackLine {}
 
                 // ── New Project wizard (inline) ──────────────────────────────
                 if *show_new.read() {

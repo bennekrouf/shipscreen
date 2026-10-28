@@ -2,6 +2,7 @@
 //! workspace.
 
 use super::*;
+use desktop_kit::ui::{Header, Theme};
 
 #[component]
 pub(super) fn App() -> Element {
@@ -46,7 +47,22 @@ pub(super) fn App() -> Element {
     // Initialise from system, then keep in sync — but stop syncing once the
     // user manually toggles via the button.
     let mut is_light = use_signal(system_prefers_light);
-    let mut theme_overridden = use_signal(|| false);
+    let theme_overridden = use_signal(|| false);
+    let mut show_settings = use_signal(|| false);
+    let mut show_mcp = use_signal(|| false);
+
+    // Lock body scroll whenever the settings popup is open
+    use_effect(move || {
+        let locked = *show_settings.read();
+        let js = if locked {
+            "document.body.style.overflow = 'hidden';"
+        } else {
+            "document.body.style.overflow = '';"
+        };
+        spawn(async move {
+            document::eval(js).await.ok();
+        });
+    });
 
     use_effect(move || {
         let cls = if *is_light.read() { "light" } else { "" };
@@ -166,6 +182,19 @@ pub(super) fn App() -> Element {
     });
 
     rsx! {
+        Header {
+            theme: Theme { light: is_light, picked: theme_overridden },
+            on_settings: move |_| show_settings.toggle(),
+            on_mcp: move |_| show_mcp.toggle(),
+            pro: rsx! { pro::ProButton {} },
+        }
+        if show_settings() {
+            SettingsPopup { on_close: move |_| show_settings.set(false) }
+        }
+        if show_mcp() {
+            workspace::mcp::McpPopup { on_close: move |_| show_mcp.set(false) }
+        }
+
         // ── Update banner ──────────────────────────────────────────────────
         // Renders only when a newer release exists AND the user hasn't dismissed
         // it this session. "Download" opens this OS's build in the system
@@ -253,23 +282,6 @@ pub(super) fn App() -> Element {
                     }
                 }
             }
-        }
-
-        // Floating theme toggle, top-right. Same UX as ais-runner.
-        button {
-            class: "btn-theme",
-            title: if *is_light.read() { "Switch to dark mode" } else { "Switch to light mode" },
-            aria_label: if *is_light.read() { "Switch to dark mode" } else { "Switch to light mode" },
-            onclick: move |_| {
-                let next = !*is_light.read();
-                theme_overridden.set(true);
-                is_light.set(next);
-                document::eval(&format!(
-                    "document.body.className = '{}';",
-                    if next { "light" } else { "" }
-                ));
-            },
-            if *is_light.read() { {icon_moon()} } else { {icon_sun()} }
         }
 
         pro::ProWindow { on_open: open_project }

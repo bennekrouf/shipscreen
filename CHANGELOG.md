@@ -15,6 +15,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- The bar across the top of the window now looks and works the same in every
+  mayorana app: the name and version on the left, and on the right Settings,
+  MCP, Feedback, the light/dark switch and the Pro badge in the corner.
+- Settings, MCP and Feedback, at the bottom of the project's step list until
+  now, and Pro, on the first screen only, are in the bar on every screen.
+- The update banner sits under the bar instead of covering the top of the
+  window.
+
 ## [0.1.46] - 2026-10-28
 
 ### Changed
