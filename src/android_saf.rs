@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use jni::objects::{JObject, JString, JValue};
 use jni::sys::jint;
@@ -44,7 +44,11 @@ pub extern "system" fn Java_dev_dioxus_main_MainActivity_nativeOnActivityResult(
     result_code: jint,
     uri: JString,
 ) {
-    let Some(sender) = pending().lock().unwrap().remove(&request_code) else {
+    let Some(sender) = pending()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&request_code)
+    else {
         return;
     };
     let value = if result_code != RESULT_OK || uri.as_raw().is_null() {
@@ -63,7 +67,13 @@ fn java_vm() -> &'static JavaVM {
     static VM: OnceLock<JavaVM> = OnceLock::new();
     VM.get_or_init(|| {
         let ctx = ndk_context::android_context();
-        unsafe { JavaVM::from_raw(ctx.vm().cast()) }.expect("no JavaVM set by the Android runtime")
+        // SAFETY: `ctx.vm()` is the process's JavaVM, set by the Android runtime before any
+        // of the app's code runs, and valid for the app's whole life.
+        let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) };
+        // Without a JavaVM there is no Android API to call at all.
+        #[allow(clippy::expect_used)]
+        let vm = vm.expect("no JavaVM set by the Android runtime");
+        vm
     })
 }
 
@@ -72,6 +82,8 @@ fn java_vm() -> &'static JavaVM {
 fn attach() -> jni::errors::Result<(jni::AttachGuard<'static>, JObject<'static>)> {
     let env = java_vm().attach_current_thread()?;
     let ctx = ndk_context::android_context();
+    // SAFETY: `ctx.context()` is the app's Activity, a global reference that lives as long
+    // as the app.
     let activity = unsafe { JObject::from_raw(ctx.context().cast()) };
     Ok((env, activity))
 }
@@ -222,7 +234,10 @@ pub async fn pick_images(allow_multiple: bool) -> Vec<(String, Vec<u8>)> {
     };
 
     let (tx, rx) = tokio::sync::oneshot::channel();
-    pending().lock().unwrap().insert(request_code, tx);
+    pending()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(request_code, tx);
 
     let Ok(Some(joined)) = rx.await else {
         return Vec::new();

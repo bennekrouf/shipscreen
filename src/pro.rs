@@ -53,7 +53,7 @@ enum Decision {
 }
 
 fn decide(status: &Status, slot: Option<&Path>, dir: &Path) -> Decision {
-    if status.unlimited() {
+    if status.is_pro() {
         return Decision::Open;
     }
     match slot {
@@ -188,7 +188,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
         spawn(async move {
             match licence::activate(&pasted).await {
                 Ok(s) => {
-                    let unlocked = s.unlimited();
+                    let unlocked = s.is_pro();
                     activated.set(matches!(s, Status::Pro(_)));
                     pro.status.set(s);
                     key.set(String::new());
@@ -332,7 +332,7 @@ pub fn ProWindow(on_open: EventHandler<PathBuf>) -> Element {
                     },
                     Status::Free => rsx! {},
                 }
-                if !status.unlimited() {
+                if !status.is_pro() {
                     if let (Some(p), Some(f)) = (&pending_name, &free_name) {
                         p {
                             "The free version works on one app, and yours is "

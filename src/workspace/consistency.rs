@@ -32,7 +32,7 @@ pub(super) fn package_refs_in(text: &str) -> Vec<(usize, String)> {
                 if value.contains('.') {
                     found.push((n + 1, value));
                 }
-                rest = &after[..];
+                rest = after;
             }
         }
         let t = line.trim();
