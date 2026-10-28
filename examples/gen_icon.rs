@@ -1,3 +1,6 @@
+// A test or an example may panic: that is a failed run, not a crash anyone sees.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 // Regenerate assets/icon.png from the procedural design used by `make_icon()`.
 //
 // Run when you change the icon shape:
