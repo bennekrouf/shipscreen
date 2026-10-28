@@ -213,7 +213,11 @@ fn android_release_script_takes_signing_from_the_environment() {
     assert!(!script.contains("mayorana-release.keystore"));
     assert!(script.contains(r#"KEY_ALIAS="${ANDROID_KEY_ALIAS:-nahw}""#));
     assert!(script.contains(r#"KEYSTORE_PATH="${ANDROID_KEYSTORE_PATH:-}""#));
-    // The template is format!-escaped bash; make sure it still parses.
+    // The template is format!-escaped bash; make sure it still parses. Not on
+    // Windows, where `bash` is WSL's and can't read the temporary folder.
+    if cfg!(windows) {
+        return;
+    }
     let path = std::env::temp_dir().join("shipscreen-test-android-release.sh");
     std::fs::write(&path, &script).unwrap();
     let check = std::process::Command::new("bash")
