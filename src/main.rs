@@ -13,7 +13,6 @@ use licence::StatusExt;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-mod feedback;
 mod kit;
 mod licence;
 mod notice;
@@ -558,22 +557,6 @@ icon!(icon_plus, "M12 5v14", "M5 12h14");
 icon!(icon_chevron_left, "M15 5l-7 7 7 7");
 icon!(icon_chevron_right, "M9 5l7 7-7 7");
 icon!(icon_check, "M20 6L9 17l-5-5");
-icon!(
-    icon_sun,
-    "M12 4V2",
-    "M12 22v-2",
-    "M4 12H2",
-    "M22 12h-2",
-    "M5.6 5.6L4.2 4.2",
-    "M19.8 19.8l-1.4-1.4",
-    "M18.4 5.6l1.4-1.4",
-    "M4.2 19.8l1.4-1.4",
-    "M12 7.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9z"
-);
-icon!(
-    icon_moon,
-    "M20.5 13.3A8.5 8.5 0 1110.7 3.5a6.6 6.6 0 009.8 9.8z"
-);
 icon!(
     icon_folder_plus,
     "M21 19a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h4.5l2 3H19a2 2 0 012 2z",

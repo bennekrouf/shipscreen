@@ -7,6 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
+use desktop_kit::ui::{ProBadge, ProLook};
 use dioxus::prelude::*;
 
 use crate::licence::{self, FreeError, Status};
@@ -105,37 +106,20 @@ const ESCAPE_JS: &str =
 pub fn ProButton() -> Element {
     let mut pro = use_context::<Pro>();
     let status = pro.status.read().clone();
-    let (label, class, title) = match &status {
-        Status::Pro(a) => (
-            "✦ PRO",
-            "pro-btn active",
-            format!("ShipScreen Pro, {} plan for {}", a.plan.name, a.email),
-        ),
-        Status::NotPro(a) if a.is_free() => (
-            "Get Pro…",
-            "pro-btn",
-            format!("Free: {} AI credits left this month. The free version works on one app; Pro on any number", a.credits.left),
-        ),
-        Status::NotPro(_) | Status::Offline(_) | Status::Unknown(_) => (
-            "✦ RENEW PRO",
-            "pro-btn renew",
-            "Your licence doesn't make this ShipScreen Pro right now".to_owned(),
-        ),
-        Status::Free => (
-            "Get Pro…",
-            "pro-btn",
-            "The free version works on one app; Pro on any number".to_owned(),
-        ),
+    let title = match &status {
+        Status::Pro(a) => format!("ShipScreen Pro, {} plan for {}", a.plan.name, a.email),
+        Status::NotPro(a) if a.is_free() => format!("Free: {} AI credits left this month. The free version works on one app; Pro on any number", a.credits.left),
+        Status::NotPro(_) | Status::Offline(_) | Status::Unknown(_) => "Your licence doesn't make this ShipScreen Pro right now".to_owned(),
+        Status::Free => "The free version works on one app; Pro on any number".to_owned(),
     };
     rsx! {
-        button {
-            class,
+        ProBadge {
+            look: ProLook::of(&status),
             title,
             onclick: move |_| {
                 pro.pending.set(None);
                 pro.open.set(true);
             },
-            "{label}"
         }
     }
 }
