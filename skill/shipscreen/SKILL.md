@@ -1,6 +1,6 @@
 ---
 name: shipscreen
-description: Drive ShipScreen, the desktop app that prepares a mobile app for the App Store and Google Play (identity, version and build numbers, store languages, captioned store screenshots, store text, and iOS and Android release builds), through its MCP tools. Use this whenever the user mentions ShipScreen, or asks to write, shorten or translate an App Store or Play Store description, keywords, promotional text, short description or what's-new notes, add store languages, caption or generate store screenshots, bump an app's version or build number, check what is missing before submitting, or build an IPA, AAB or APK. Also use it when ShipScreen's tools are missing and the user wants to connect the app.
+description: How to get a mobile app store-ready with ShipScreen, the desktop app that holds an app's identity, version and build numbers, store languages, captioned screenshots, App Store and Google Play text, and release builds. Read this skill before calling any shipscreen tool (list_projects, get_project, set_app, set_version, set_languages, set_screens, set_store_text, generate_screenshots, build), because it has the store-text writing rules, character-limit handling, what needs the user's yes, and how to report what is missing. Use it whenever the user mentions ShipScreen, or asks to write, shorten or translate an App Store or Play Store description, keywords, promotional text, short description or what's new, add store languages, caption or generate store screenshots, bump a version or build number, check what blocks a release, or build an IPA, AAB or APK.
 ---
 
 # ShipScreen
@@ -76,3 +76,21 @@ length against its limit, and wait for their yes.
 Uploading to App Store Connect or Google Play is not exposed. When the
 listing and build are ready, tell the user to finish from the **Submit** step
 in the ShipScreen window, which runs each store's stages with a checklist.
+
+## How to report back
+
+For what is missing before a build or a submission, use a checklist, most
+blocking first, each with the step in ShipScreen where it is fixed:
+
+- [ ] Support URL — *App* step
+- [ ] Store text in de-DE — *Store text* step
+
+For store text, show each field with its length against its limit before
+saving it:
+
+| Language | Field | Length / limit | Text |
+|---|---|---|---|
+
+After `build`, say whether it succeeded, the version and build number, and the
+file's path; if it failed, the first error line from the log and what it
+usually means.
