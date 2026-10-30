@@ -1,0 +1,82 @@
+[
+ {
+  "query": "write the app store description and keywords for my habit tracker in english, then translate to german and french, it's the project in ~/code/habits",
+  "should_trigger": true
+ },
+ {
+  "query": "what's still missing before I can build the iOS release for the habits app",
+  "should_trigger": true
+ },
+ {
+  "query": "bump the version to 1.3.0 and build an aab for google play",
+  "should_trigger": true
+ },
+ {
+  "query": "add japanese and korean as store languages and caption the 5 screenshots in each",
+  "should_trigger": true
+ },
+ {
+  "query": "my play store short description is too long, shorten it to fit and keep the main benefit",
+  "should_trigger": true
+ },
+ {
+  "query": "generate the store-ready screenshots for all languages with the purple and teal colours",
+  "should_trigger": true
+ },
+ {
+  "query": "write the 'what's new' for 2.1: offline mode, faster sync, fixed widget crash. all store languages",
+  "should_trigger": true
+ },
+ {
+  "query": "set the support url to https://example.com/support and mark the app as using exempt encryption only",
+  "should_trigger": true
+ },
+ {
+  "query": "build the signed IPA for the meditation app and tell me if it fails",
+  "should_trigger": true
+ },
+ {
+  "query": "I'm submitting my dioxus app to both stores next week, help me get the listing ready",
+  "should_trigger": true
+ },
+ {
+  "query": "my xcode archive fails with 'no signing certificate iOS Distribution found'",
+  "should_trigger": false
+ },
+ {
+  "query": "explain apple's app review guideline 4.3 spam rejection and how to appeal",
+  "should_trigger": false
+ },
+ {
+  "query": "set up fastlane match for my team's certificates",
+  "should_trigger": false
+ },
+ {
+  "query": "design an app icon for a habit tracker",
+  "should_trigger": false
+ },
+ {
+  "query": "how do I add in-app purchases to a react native app",
+  "should_trigger": false
+ },
+ {
+  "query": "write a privacy policy for my mobile app that uses firebase analytics",
+  "should_trigger": false
+ },
+ {
+  "query": "what screenshot sizes does the app store require in 2026",
+  "should_trigger": false
+ },
+ {
+  "query": "my android app crashes on startup only on pixel 8, here's the logcat",
+  "should_trigger": false
+ },
+ {
+  "query": "ASO: which keywords do competitors like Streaks and Habitica rank for",
+  "should_trigger": false
+ },
+ {
+  "query": "upload my build to testflight and add the external testers",
+  "should_trigger": false
+ }
+]
