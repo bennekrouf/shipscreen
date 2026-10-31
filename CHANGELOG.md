@@ -15,6 +15,18 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- ShipScreen's answers to Claude and other agents are shorter, so a long
+  session spends fewer tokens: empty fields are left out and nothing is
+  padded with spacing.
+- Reading a project shows how full each store text field is in every
+  language, and the text itself only for the language asked for. Asking
+  about a version or a build no longer brings back every description in
+  every language.
+
 ## [0.1.52] - 2026-10-31
 
 ### Changed

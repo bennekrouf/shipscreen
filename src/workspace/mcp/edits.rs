@@ -51,6 +51,30 @@ impl Project {
     }
 }
 
+/// `describe` as a client reads it: each language's store text as how full
+/// each field is, and the words themselves only for `language`. Every store
+/// text in every language is most of a project, and a client asking about
+/// its version or a build doesn't need it.
+pub(super) fn brief(mut project: Value, language: Option<&str>) -> Value {
+    if let Some(store) = project["store_text"].as_object_mut() {
+        for (locale, fields) in store.iter_mut() {
+            if Some(locale.as_str()) == language {
+                continue;
+            }
+            for field in fields
+                .as_object_mut()
+                .into_iter()
+                .flat_map(|f| f.values_mut())
+            {
+                if let Some(f) = field.as_object_mut() {
+                    f.remove("text");
+                }
+            }
+        }
+    }
+    project
+}
+
 pub(super) fn describe(dir: &std::path::Path, p: &ProjectState, settings: &Settings) -> Value {
     let languages: Vec<Value> = p
         .locales
@@ -205,7 +229,7 @@ pub(super) fn set_app(args: &Value) -> Result<Value, String> {
         }
         Ok(())
     })?;
-    Ok(project.describe())
+    Ok(brief(project.describe(), None))
 }
 
 pub(super) fn set_version(args: &Value) -> Result<Value, String> {
@@ -279,7 +303,7 @@ pub(super) fn set_languages(args: &Value) -> Result<Value, String> {
         }
         Ok(())
     })?;
-    Ok(project.describe())
+    Ok(brief(project.describe(), None))
 }
 
 pub(super) fn set_screens(args: &Value) -> Result<Value, String> {
