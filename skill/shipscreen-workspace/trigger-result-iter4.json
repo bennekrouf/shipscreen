@@ -1,0 +1,171 @@
+{
+  "skill_name": "shipscreen",
+  "description": "How to get a mobile app store-ready with ShipScreen, the desktop app that holds an app's identity, version and build numbers, store languages, captioned screenshots, App Store and Google Play text, and release builds. Read this skill before calling any shipscreen tool (list_projects, get_project, set_app, set_version, set_languages, set_screens, set_store_text, generate_screenshots, build), because it has the store-text writing rules, character-limit handling, what needs the user's yes, and how to report what is missing. Use it whenever the user mentions ShipScreen, or asks to write, shorten or translate an App Store or Play Store description, keywords, promotional text, short description or what's new, add store languages, caption or generate store screenshots, bump a version or build number, check what blocks a release, or build an IPA, AAB or APK.",
+  "results": [
+    {
+      "query": "write the app store description and keywords for my habit tracker in english, then translate to german and french, it's the project in ~/code/habits",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "what's still missing before I can build the iOS release for the habits app",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "bump the version to 1.3.0 and build an aab for google play",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "add japanese and korean as store languages and caption the 5 screenshots in each",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "my play store short description is too long, shorten it to fit and keep the main benefit",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "generate the store-ready screenshots for all languages with the purple and teal colours",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "write the 'what's new' for 2.1: offline mode, faster sync, fixed widget crash. all store languages",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "set the support url to https://example.com/support and mark the app as using exempt encryption only",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "build the signed IPA for the meditation app and tell me if it fails",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "pass": false
+    },
+    {
+      "query": "I'm submitting my dioxus app to both stores next week, help me get the listing ready",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "my xcode archive fails with 'no signing certificate iOS Distribution found'",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "explain apple's app review guideline 4.3 spam rejection and how to appeal",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "set up fastlane match for my team's certificates",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "design an app icon for a habit tracker",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "how do I add in-app purchases to a react native app",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "write a privacy policy for my mobile app that uses firebase analytics",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "what screenshot sizes does the app store require in 2026",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "my android app crashes on startup only on pixel 8, here's the logcat",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "ASO: which keywords do competitors like Streaks and Habitica rank for",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    },
+    {
+      "query": "upload my build to testflight and add the external testers",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "pass": true
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "passed": 14,
+    "failed": 6
+  }
+}
