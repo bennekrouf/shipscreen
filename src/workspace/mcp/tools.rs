@@ -25,9 +25,17 @@ pub(super) fn tools() -> Value {
         {
             "name": "get_project",
             "description": "Everything about one project: identity, platform, version and build numbers, languages, \
-                            screens and captions per language, store text with its limits, the screenshots and \
-                            builds made so far, store credentials, what each build still needs, and the release history.",
-            "inputSchema": { "type": "object", "properties": { "project": project }, "required": ["project"] },
+                            screens and captions per language, how full each store text field is (the text itself for \
+                            the language given), the screenshots and builds made so far, store credentials, what each \
+                            build still needs, and the release history.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "project": project,
+                    "language": { "type": "string", "description": "A store language code, e.g. fr-FR: its store text in full." },
+                },
+                "required": ["project"],
+            },
         },
         {
             "name": "set_app",

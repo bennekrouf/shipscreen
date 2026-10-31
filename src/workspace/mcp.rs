@@ -138,8 +138,24 @@ fn error(id: Value, code: i64, message: &str) -> Value {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
 }
 
+/// A tool result as the client reads it: compact, with no null fields. It
+/// stays in the client's context for the rest of the conversation, so every
+/// byte here is paid for again on each later turn.
 fn pretty(value: &Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_default()
+    serde_json::to_string(&without_nulls(value.clone())).unwrap_or_default()
+}
+
+fn without_nulls(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .filter(|(_, v)| !v.is_null())
+                .map(|(k, v)| (k, without_nulls(v)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
+        other => other,
+    }
 }
 
 // ── Tool definitions ─────────────────────────────────────────────────────
@@ -147,7 +163,9 @@ fn pretty(value: &Value) -> String {
 async fn call(name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_projects" => Ok(list_projects()),
-        "get_project" => Project::from(args).map(|p| p.describe()),
+        "get_project" => {
+            Project::from(args).map(|p| brief(p.describe(), args["language"].as_str()))
+        }
         "set_app" => set_app(args),
         "set_version" => set_version(args),
         "set_languages" => set_languages(args),
