@@ -42,7 +42,9 @@ missing for a build. Store text has the stores' character limits, which are enfo
 translating it, but show the user the text before saving it over theirs. generate_screenshots draws the \
 store-ready images from the screens and captions (the simple style; the AI style is in the ShipScreen window). \
 build runs a release build and takes minutes. Uploading to the stores is not available here: the user does that \
-from the Submit step in the ShipScreen window.";
+from the Submit step in the ShipScreen window. \
+Before calling these tools, read the shipscreen skill if one is available: it has the confirmation \
+rules, defaults and report layouts that these instructions leave out.";
 
 /// The stores' limits per store text field, as the Store text step shows them.
 const STORE_FIELDS: [(&str, usize); 5] = [
