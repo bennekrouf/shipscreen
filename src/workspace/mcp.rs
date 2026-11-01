@@ -35,13 +35,9 @@ const PROTOCOL: &str = "2025-06-18";
 const LOG_TAIL: usize = 60;
 
 const INSTRUCTIONS: &str = "ShipScreen prepares an app for the App Store and Google Play: its identity, version \
-and build numbers, store languages, the raw screenshots and their captions per language, the store text, the \
-store-ready screenshots, and the iOS and Android builds. Projects are named by their folder's absolute path; \
-list_projects gives the ones opened in ShipScreen. get_project shows everything about one, including what is still \
-missing for a build. Store text has the stores' character limits, which are enforced; Claude is good at writing and \
-translating it, but show the user the text before saving it over theirs. generate_screenshots draws the \
-store-ready images from the screens and captions (the simple style; the AI style is in the ShipScreen window). \
-build runs a release build and takes minutes. Uploading to the stores is not available here: the user does that \
+and build numbers, store languages, screenshots and their captions, store text, and the iOS and Android builds. \
+Projects are named by their folder's absolute path; list_projects gives the ones opened in ShipScreen. Show the \
+user store text before saving it over theirs. Uploading to the stores is not available here: the user does that \
 from the Submit step in the ShipScreen window. \
 Before calling these tools, read the shipscreen skill if one is available: it has the confirmation \
 rules, defaults and report layouts that these instructions leave out.";
