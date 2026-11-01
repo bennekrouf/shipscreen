@@ -4894,7 +4894,7 @@ dependencies = [
 
 [[package]]
 name = "shipscreen"
-version = "0.1.55"
+version = "0.1.56"
 dependencies = [
  "ab_glyph",
  "base64",
