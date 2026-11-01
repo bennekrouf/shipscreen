@@ -17,19 +17,15 @@
 //! is `serve`.
 
 use super::*;
+use desktop_kit::mcp::Server;
 use jobs::Log;
 use serde_json::{json, Value};
-use std::io::{BufRead, Write};
 mod tools;
 use tools::*;
 mod edits;
 use edits::*;
 mod popup;
 pub(crate) use popup::*;
-
-/// The newest protocol revision this server speaks. A client asking for an
-/// older one gets its own back; everything used here exists in all of them.
-const PROTOCOL: &str = "2025-06-18";
 
 /// Lines of a build's log a result carries: the end is where a failure is.
 const LOG_TAIL: usize = 60;
@@ -51,6 +47,15 @@ const STORE_FIELDS: [(&str, usize); 5] = [
     ("short_description", 80),
 ];
 
+/// What the client is told: the plumbing is desktop-kit's, the tools are below.
+const SERVER: Server = Server {
+    name: "shipscreen",
+    version: env!("CARGO_PKG_VERSION"),
+    instructions: INSTRUCTIONS,
+    tools,
+    library: false,
+};
+
 pub(crate) fn serve() {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -62,98 +67,7 @@ pub(crate) fn serve() {
             std::process::exit(1);
         }
     };
-    runtime.block_on(async {
-        let stdin = std::io::stdin();
-        let mut stdout = std::io::stdout();
-        for line in stdin.lock().lines() {
-            let Ok(line) = line else { break };
-            if line.trim().is_empty() {
-                continue;
-            }
-            let Ok(message) = serde_json::from_str::<Value>(&line) else {
-                write(&mut stdout, &error(Value::Null, -32700, "not JSON"));
-                continue;
-            };
-            // A notification (no id) asks for nothing back: `initialized`,
-            // cancellations, and whatever later revisions add.
-            let Some(id) = message.get("id").cloned() else {
-                continue;
-            };
-            let reply = handle(id, &message).await;
-            write(&mut stdout, &reply);
-        }
-    });
-}
-
-async fn handle(id: Value, message: &Value) -> Value {
-    let method = message["method"].as_str().unwrap_or("");
-    let params = &message["params"];
-    match method {
-        "initialize" => {
-            let asked = params["protocolVersion"].as_str().unwrap_or(PROTOCOL);
-            let version = if asked <= PROTOCOL { asked } else { PROTOCOL };
-            result(
-                id,
-                json!({
-                    "protocolVersion": version,
-                    "capabilities": { "tools": {} },
-                    "serverInfo": { "name": "shipscreen", "version": env!("CARGO_PKG_VERSION") },
-                    "instructions": INSTRUCTIONS,
-                }),
-            )
-        }
-        "ping" => result(id, json!({})),
-        "tools/list" => result(id, json!({ "tools": tools() })),
-        "tools/call" => {
-            let name = params["name"].as_str().unwrap_or("");
-            let (text, is_error) = match call(name, &params["arguments"]).await {
-                Ok(value) => (pretty(&value), false),
-                Err(why) => (why, true),
-            };
-            result(
-                id,
-                json!({ "content": [{ "type": "text", "text": text }], "isError": is_error }),
-            )
-        }
-        _ => error(id, -32601, &format!("no method {method}")),
-    }
-}
-
-fn write(stdout: &mut std::io::Stdout, reply: &Value) {
-    // One message per line, and nothing else ever on stdout: the client reads
-    // it as the protocol, so a stray print is a corrupt message.
-    let mut bytes = serde_json::to_vec(reply).unwrap_or_default();
-    bytes.push(b'\n');
-    let _ = stdout.write_all(&bytes);
-    let _ = stdout.flush();
-}
-
-fn result(id: Value, result: Value) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "result": result })
-}
-
-fn error(id: Value, code: i64, message: &str) -> Value {
-    json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } })
-}
-
-/// A tool result as the client reads it: compact, with no null fields. It
-/// stays in the client's context for the rest of the conversation, so every
-/// byte here is paid for again on each later turn.
-fn pretty(value: &Value) -> String {
-    serde_json::to_string(&without_nulls(value.clone())).unwrap_or_default()
-}
-
-fn without_nulls(value: Value) -> Value {
-    match value {
-        Value::Object(map) => Value::Object(
-            map.into_iter()
-                .filter(|(_, v)| !v.is_null())
-                .map(|(k, v)| (k, without_nulls(v)))
-                .collect(),
-        ),
-        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
-        other => other,
-    }
+    runtime.block_on(SERVER.serve_async(|c| async move { call(&c.name, &c.args).await }));
 }
 
 // ── Tool definitions ─────────────────────────────────────────────────────
