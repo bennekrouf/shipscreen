@@ -3,8 +3,8 @@
 use super::*;
 
 pub(super) fn tools() -> Value {
-    let project =
-        json!({ "type": "string", "description": "Absolute path of the project folder." });
+    // What project means is said once, in the instructions, not in every tool.
+    let project = json!({ "type": "string" });
     let codes: Vec<&str> = LOCALES.iter().map(|(code, _)| *code).collect();
     let locale = json!({ "type": "string", "enum": codes, "description": "Store language code." });
     let mut store_fields = serde_json::Map::new();
@@ -131,14 +131,15 @@ pub(super) fn tools() -> Value {
             "description": "Sets one language's store text. Only the fields given change; one over its limit is \
                             refused. description and whats_new go to both stores (Play keeps the first 500 \
                             characters of whats_new), keywords and promo_text to the App Store, short_description \
-                            to Google Play.",
+                            to Google Play. Show the user the text before saving it over theirs.",
             "inputSchema": { "type": "object", "properties": store_fields, "required": ["project", "locale"] },
         },
         {
             "name": "generate_screenshots",
             "description": "Draws the store-ready screenshots for every language: each screen on the primary or \
                             secondary colour under its caption, at every export size, into the project's fastlane \
-                            folders. Replaces the last ones.",
+                            folders. Replaces the last ones. This is the simple style; the AI style is in \
+                            the ShipScreen window.",
             "inputSchema": { "type": "object", "properties": { "project": project }, "required": ["project"] },
         },
         {
