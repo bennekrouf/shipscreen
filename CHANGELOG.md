@@ -15,16 +15,22 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
-## [0.1.56] - 2026-11-01
+## [Unreleased]
 
 ### Added
 
 - Install & restart, on the banner that says a new version is out: one click
-  downloads it, checks it, puts it in place of the version you have and opens
-  it again, on macOS, Windows and Linux. No disk image to open, drag and throw
-  away, no setup to click through. If an update can't finish, ShipScreen says why
-  the next time it opens. Where it can't replace itself (an app in a folder you
-  can't change), the banner offers the download instead.
+  downloads it, checks it, puts it in place of the version you have and opens it
+  again, on macOS, Windows and Linux. No disk image to open, drag and throw
+  away, no setup to click through. If an update can't finish, ShipScreen says
+  why the next time it opens. Where it can't replace itself (an app in a folder
+  you can't change), the banner offers the download instead.
+
+## [0.1.56] - 2026-11-01
+
+### Changed
+
+- Build and packaging only — no user-visible change.
 
 ## [0.1.55] - 2026-11-01
 
