@@ -121,13 +121,12 @@ pub(super) fn App() -> Element {
 
     rsx! {
         Header {
-            theme: Theme { light: is_light, picked: theme_overridden },
             on_settings: move |_| show_settings.toggle(),
             on_mcp: move |_| show_mcp.toggle(),
             pro: rsx! { ProButton { pro, hint: pro::HINT } },
         }
         if show_settings() {
-            SettingsPopup { on_close: move |_| show_settings.set(false) }
+            SettingsPopup { theme: Theme { light: is_light, picked: theme_overridden }, on_close: move |_| show_settings.set(false) }
         }
         if show_mcp() {
             workspace::mcp::McpPopup { on_close: move |_| show_mcp.set(false) }
