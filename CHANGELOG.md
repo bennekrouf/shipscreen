@@ -15,6 +15,13 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- The settings popup now supports theme customization, allowing users to choose
+  their preferred theme for the application interface.
+
 ## [0.1.60] - 2026-11-02
 
 ### Changed
