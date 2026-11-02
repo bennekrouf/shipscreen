@@ -306,7 +306,7 @@ pub(super) fn ProjectPicker(on_open: EventHandler<PathBuf>) -> Element {
 }
 
 #[component]
-pub(super) fn SettingsPopup(on_close: EventHandler<()>) -> Element {
+pub(super) fn SettingsPopup(theme: desktop_kit::ui::Theme, on_close: EventHandler<()>) -> Element {
     let mut settings = use_context::<Signal<Settings>>();
 
     let fal_key_val = settings.read().fal_key.clone();
@@ -382,6 +382,9 @@ pub(super) fn SettingsPopup(on_close: EventHandler<()>) -> Element {
                     }
                     p { class: "settings-hint", "More steps = better quality but slower (10–50)" }
                 }
+
+                p { class: "settings-section-title", "General" }
+                desktop_kit::ui::SettingsGeneral { theme }
 
                 div { class: "settings-field settings-path",
                     p { class: "settings-hint", "Config: {global_config_path().display()}" }
