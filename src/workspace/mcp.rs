@@ -175,41 +175,5 @@ fn tail(lines: &[String]) -> Vec<String> {
 
 // ── The window ───────────────────────────────────────────────────────────
 
-/// This executable, as a client should start it.
-fn command() -> String {
-    std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "shipscreen".into())
-}
-
-/// The `mcpServers` entry for Claude Desktop's config file. Built with serde
-/// so a Windows path's backslashes arrive escaped.
-pub(crate) fn desktop_config(command: &str) -> String {
-    let config = json!({ "mcpServers": { "shipscreen": { "command": command, "args": ["mcp"] } } });
-    serde_json::to_string_pretty(&config).unwrap_or_default()
-}
-
-/// The one line that adds it to Claude Code, for every project.
-pub(crate) fn code_command(command: &str) -> String {
-    format!("claude mcp add shipscreen --scope user -- \"{command}\" mcp")
-}
-
-/// The one line that adds it to Codex. Its CLI, IDE extension and app share
-/// one list of servers, each one there for every project.
-pub(crate) fn codex_command(command: &str) -> String {
-    format!("codex mcp add shipscreen -- \"{command}\" mcp")
-}
-
-/// Where Claude Desktop keeps its config.
-fn desktop_config_path() -> &'static str {
-    if cfg!(target_os = "windows") {
-        "%APPDATA%\\Claude\\claude_desktop_config.json"
-    } else if cfg!(target_os = "macos") {
-        "~/Library/Application Support/Claude/claude_desktop_config.json"
-    } else {
-        "~/.config/Claude/claude_desktop_config.json"
-    }
-}
-
 #[cfg(test)]
 mod tests;

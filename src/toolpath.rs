@@ -12,7 +12,11 @@ use std::path::PathBuf;
 /// Rewrites this process's PATH. Call first thing in `main`, before any thread starts.
 pub fn init() {
     let current = std::env::var_os("PATH").unwrap_or_default();
-    let path = tool_path(&current, cargo_bin(), login_shell_path());
+    let path = tool_path(
+        &current,
+        cargo_bin(),
+        desktop_kit::shell::login_path().map(OsString::from),
+    );
     if path != current {
         tracing::info!("PATH for tools: {}", path.to_string_lossy());
         std::env::set_var("PATH", path);
@@ -46,54 +50,6 @@ fn cargo_bin() -> Option<PathBuf> {
     Some(home.join("bin")).filter(|bin| bin.is_dir())
 }
 
-const MARKER: &str = "__SHIPSCREEN_PATH__";
-
-/// PATH as the developer's login shell sets it (reads `.zprofile`, `.bash_profile`…).
-/// `None` on Windows and Android, or if the shell fails or takes over 3 seconds.
-#[cfg(all(unix, not(target_os = "android")))]
-fn login_shell_path() -> Option<OsString> {
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
-
-    let shell = std::env::var("SHELL")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "/bin/zsh".into());
-    let mut child = Command::new(shell)
-        .args(["-l", "-c", &format!("printf '{MARKER}%s' \"$PATH\"")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-
-    // A profile that waits for input or hangs must not block startup.
-    let deadline = Instant::now() + Duration::from_secs(3);
-    while child.try_wait().ok()?.is_none() {
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            tracing::warn!("Login shell took too long; using the inherited PATH");
-            return None;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    let output = child.wait_with_output().ok()?;
-    path_after_marker(&String::from_utf8_lossy(&output.stdout))
-}
-
-#[cfg(not(all(unix, not(target_os = "android"))))]
-fn login_shell_path() -> Option<OsString> {
-    None
-}
-
-/// The text after the marker: profiles sometimes print banners before it.
-#[cfg_attr(not(all(unix, not(target_os = "android"))), allow(dead_code))]
-fn path_after_marker(output: &str) -> Option<OsString> {
-    let path = output.rsplit_once(MARKER)?.1.trim();
-    (!path.is_empty()).then(|| OsString::from(path))
-}
-
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
@@ -119,16 +75,5 @@ mod tests {
             tool_path(OsStr::new("/usr/bin:/bin"), None, None),
             OsString::from("/usr/bin:/bin")
         );
-    }
-
-    #[test]
-    fn reads_path_after_profile_banners() {
-        let out = format!("Welcome!\n{MARKER}/opt/homebrew/bin:/usr/bin\n");
-        assert_eq!(
-            path_after_marker(&out),
-            Some(OsString::from("/opt/homebrew/bin:/usr/bin"))
-        );
-        assert_eq!(path_after_marker("no marker"), None);
-        assert_eq!(path_after_marker(MARKER), None);
     }
 }

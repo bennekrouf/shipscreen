@@ -2129,21 +2129,11 @@ a.btn { text-decoration: none; }
 .btn-generate .icon,
 .btn-publish .icon { width: 17px; height: 17px; }
 
-/* ------------------------------------------------------------------ */
 
-/* "Use ShipScreen from Claude": what to paste, and where. */
-.mcp-lead { margin-top: 0; }
-.mcp-snippet-wrap { position: relative; margin-top: var(--s2); }
-.mcp-snippet {
-    margin: 0; padding: var(--s3) 84px var(--s3) var(--s3);
-    border: 1px solid var(--border); border-radius: var(--r-md, 6px); background: var(--surface-log);
-    color: var(--text1); font: 11.5px var(--mono); line-height: 1.5;
-    white-space: pre-wrap; word-break: break-all; user-select: text; -webkit-user-select: text;
-}
-.mcp-copy { position: absolute; top: 6px; right: 6px; }
-.mcp-path { word-break: break-all; }
-.mcp-note { margin-top: var(--s5); padding: var(--s3); border-radius: var(--r-md, 6px); background: var(--bg2); }
-.mcp-note code { word-break: break-all; }
+
+
+
+
 
 /* With a mouse, the large call-to-action, build and icon buttons share the
    30px height of every other button; touch keeps its 44px targets above. */
