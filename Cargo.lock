@@ -964,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "desktop-kit"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "base64",
  "chrono",
@@ -4894,7 +4894,7 @@ dependencies = [
 
 [[package]]
 name = "shipscreen"
-version = "0.1.64"
+version = "0.1.65"
 dependencies = [
  "ab_glyph",
  "base64",
