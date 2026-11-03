@@ -312,6 +312,7 @@ pub(super) fn SettingsPopup(theme: desktop_kit::ui::Theme, on_close: EventHandle
     let fal_key_val = settings.read().fal_key.clone();
     let phone_style_val = settings.read().phone_style.clone();
     let inference_steps_val = settings.read().inference_steps;
+    desktop_kit::ui::use_escape(on_close);
 
     rsx! {
         div { class: "settings-backdrop", onclick: move |_| on_close.call(()) }
@@ -320,19 +321,6 @@ pub(super) fn SettingsPopup(theme: desktop_kit::ui::Theme, on_close: EventHandle
             role: "dialog",
             aria_modal: "true",
             aria_label: "Settings",
-            // Esc closes it. Backdrop-click was the only way out before, which
-            // was the sole escape whenever the window was short enough to push
-            // the close button off-screen.
-            tabindex: "-1",
-            onmounted: move |e: Event<MountedData>| {
-                spawn(async move { let _ = e.set_focus(true).await; });
-            },
-            onkeydown: move |e: KeyboardEvent| {
-                if e.key() == Key::Escape {
-                    e.stop_propagation();
-                    on_close.call(());
-                }
-            },
             div { class: "modal-head",
                 h2 { "Settings" }
                 button { class: "modal-close", title: "Close", onclick: move |_| on_close.call(()), "×" }
