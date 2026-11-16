@@ -3,7 +3,8 @@
 //! encrypted backup of everything in the keys folder.
 //!
 //! All of it shells out to the tools a developer already has (`security`,
-//! `keytool`, `git`, `tar`, `openssl`) rather than reimplementing them.
+//! `keytool`, `git`, `tar`, `openssl`) rather than reimplementing them, except
+//! the backup's encryption, which is age's (see `export_backup`).
 //! Secrets are passed on stdin or through the environment, never as
 //! command-line arguments, which other processes can read.
 
@@ -398,8 +399,12 @@ pub(super) fn newest_mtime(paths: &[PathBuf]) -> Option<std::time::SystemTime> {
     newest
 }
 
-/// Write `sources` (files or folders) into one AES-256 encrypted archive.
-/// Restore with: `openssl enc -d -aes-256-cbc -pbkdf2 -in FILE | tar xz`
+/// Write `sources` (files or folders) into one encrypted archive, in the age
+/// format (<https://age-encryption.org>): the password is stretched with
+/// scrypt, and every chunk is authenticated, so a backup that was changed or
+/// cut short is refused on restore rather than unpacked.
+///
+/// Restore with: `age -d FILE | tar xz`
 pub(super) fn export_backup(
     sources: &[PathBuf],
     dest: &Path,
@@ -425,32 +430,39 @@ pub(super) fn export_backup(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
-    let out = Command::new("openssl")
-        .args([
-            "enc",
-            "-aes-256-cbc",
-            "-pbkdf2",
-            "-salt",
-            "-pass",
-            "env:SHIPSCREEN_BKP",
-            "-out",
-        ])
-        .arg(dest)
-        .env("SHIPSCREEN_BKP", password)
-        .stdin(tar.stdout.take().ok_or("no tar output")?)
-        .output()
-        .map_err(|e| e.to_string())?;
-    let tar_ok = tar.wait().map(|s| s.success()).unwrap_or(false);
-    if !out.status.success() || !tar_ok {
-        let _ = std::fs::remove_file(dest);
-        return Err(format!(
-            "Backup failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
+    let mut archive = tar.stdout.take().ok_or("no tar output")?;
+    let encrypted = (|| -> std::io::Result<()> {
+        let mut file = std::fs::OpenOptions::new();
+        file.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // Readable only by the user from the first byte, not after.
+            file.mode(0o600);
+        }
+        let file = file.open(dest)?;
+        let encryptor = age::Encryptor::with_user_passphrase(age::secrecy::SecretString::from(
+            password.to_owned(),
         ));
+        let mut writer = encryptor.wrap_output(std::io::BufWriter::new(file))?;
+        std::io::copy(&mut archive, &mut writer)?;
+        writer.finish()?.flush()
+    })();
+    let tar_out = tar.wait_with_output();
+    let tar_ok = tar_out.as_ref().is_ok_and(|o| o.status.success());
+    if encrypted.is_err() || !tar_ok {
+        let _ = std::fs::remove_file(dest);
+        let why = match (&encrypted, &tar_out) {
+            (Err(e), _) => e.to_string(),
+            (_, Ok(o)) => String::from_utf8_lossy(&o.stderr).trim().to_string(),
+            (_, Err(e)) => e.to_string(),
+        };
+        return Err(format!("Backup failed: {why}"));
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
+        // A file that was already there keeps its old mode through `open`.
         let _ = std::fs::set_permissions(dest, std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
@@ -695,23 +707,61 @@ mod tests {
         );
     }
 
+    /// What `age -d` would give for `bytes` with `password`, or why it refuses.
+    fn age_decrypt(bytes: &[u8], password: &str) -> Result<Vec<u8>, String> {
+        use std::io::Read as _;
+        let decryptor = age::Decryptor::new(bytes).map_err(|e| e.to_string())?;
+        let identity =
+            age::scrypt::Identity::new(age::secrecy::SecretString::from(password.to_owned()));
+        let mut reader = decryptor
+            .decrypt(std::iter::once(&identity as &dyn age::Identity))
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        reader.read_to_end(&mut out).map_err(|e| e.to_string())?;
+        Ok(out)
+    }
+
+    /// `tar xzO <member>` of a gzipped archive.
+    fn untar_one(archive: &[u8], member: &str) -> String {
+        let mut tar = Command::new("tar")
+            .args(["xzO", member])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        tar.stdin.take().unwrap().write_all(archive).unwrap();
+        String::from_utf8_lossy(&tar.wait_with_output().unwrap().stdout).into_owned()
+    }
+
     #[test]
-    fn backup_round_trips() {
+    fn backup_round_trips_and_refuses_tampering() {
         let dir = std::env::temp_dir().join("shipscreen-test-backup");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("keys")).unwrap();
         std::fs::write(dir.join("keys/a.p8"), "secret").unwrap();
-        let dest = dir.join("backup.enc");
+        let dest = dir.join("backup.age");
         export_backup(&[dir.join("keys")], &dest, "backup-pass-1").unwrap();
-        let out = Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "openssl enc -d -aes-256-cbc -pbkdf2 -pass pass:backup-pass-1 -in '{}' | tar xzO keys/a.p8",
-                dest.display()
-            ))
-            .output()
-            .unwrap();
-        assert_eq!(String::from_utf8_lossy(&out.stdout), "secret");
+        let bytes = std::fs::read(&dest).unwrap();
+        assert!(bytes.starts_with(b"age-encryption.org/v1\n"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dest).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+
+        let archive = age_decrypt(&bytes, "backup-pass-1").unwrap();
+        assert_eq!(untar_one(&archive, "keys/a.p8"), "secret");
+        assert!(age_decrypt(&bytes, "wrong-pass-1").is_err());
+
+        // One byte changed in the body, or the end cut off: refused, not unpacked.
+        let mut flipped = bytes.clone();
+        let last = flipped.len() - 1;
+        flipped[last] ^= 1;
+        assert!(age_decrypt(&flipped, "backup-pass-1").is_err());
+        assert!(age_decrypt(&bytes[..bytes.len() - 20], "backup-pass-1").is_err());
+
         assert!(export_backup(&[dir.join("keys")], &dest, "short").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
