@@ -15,6 +15,17 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- The encrypted backup of your signing keys is now an age file
+  (age-encryption.org) instead of an openssl one. The password is stretched
+  far harder, and the backup is checked as it is opened: one that was changed
+  or cut short is refused rather than unpacked. Restore it with
+  `age -d FILE | tar xz` (install age with `brew install age`). Backups made
+  before this update still open with the openssl command they were made with.
+
 ## [0.1.68] - 2026-11-06
 
 ### Changed

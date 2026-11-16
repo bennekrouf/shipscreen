@@ -349,7 +349,7 @@ pub(crate) fn BackupCard() -> Element {
                         let sources = backup_sources(&settings.peek());
                         let (mut pw, mut pw2) = (pw, pw2);
                         spawn(async move {
-                            let name = format!("shipscreen-keys-{}.enc", &utc_now()[..10]);
+                            let name = format!("shipscreen-keys-{}.age", &utc_now()[..10]);
                             let Some(dest) = save_file("Save encrypted backup", &name).await else { return };
                             state.set(JobState::Running("Encrypting…".into()));
                             let dest2 = dest.clone();
@@ -375,7 +375,7 @@ pub(crate) fn BackupCard() -> Element {
             p { class: "settings-hint",
                 "Covers {keys.display()}"
                 if !settings.read().android_keystore_path.trim().is_empty() { " and your upload keystore" }
-                ". Restore with: openssl enc -d -aes-256-cbc -pbkdf2 -in FILE | tar xz"
+                ". Restore with age (age-encryption.org): age -d FILE | tar xz"
             }
         }
     }
