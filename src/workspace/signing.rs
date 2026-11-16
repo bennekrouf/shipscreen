@@ -418,6 +418,7 @@ pub(super) fn export_backup(
         return Err("Nothing to back up yet.".into());
     }
     let mut tar = Command::new("tar");
+    tar.quiet();
     tar.arg("-czf").arg("-");
     for p in &existing {
         // Relative to the parent keeps paths short and restorable anywhere.
