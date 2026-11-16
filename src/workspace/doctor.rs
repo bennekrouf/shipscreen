@@ -424,7 +424,7 @@ fn gradle_target_sdk(dir: &Path) -> Option<u32> {
 /// Apply a fix. Blocking; returns what happened.
 pub(super) fn apply(dir: &Path, fix: &Fix) -> Result<String, String> {
     let done = |cmd: &mut Command| -> Result<(), String> {
-        let out = cmd.output().map_err(|e| e.to_string())?;
+        let out = cmd.quiet().output().map_err(|e| e.to_string())?;
         if out.status.success() {
             Ok(())
         } else {
