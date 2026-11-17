@@ -37,7 +37,7 @@
     <Launch Condition="Installed OR WindowsBuild &gt;= 17763"
             Message="ShipScreen needs Windows 10 version 1809 or later." />
 
-    <Icon Id="ShipScreenIcon" SourceFile="..\assets\icon.ico" />
+    <Icon Id="ShipScreenIcon" SourceFile="assets\icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="ShipScreenIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://mayorana.ch/en/apps/shipscreen" />
     <Property Id="ARPHELPLINK" Value="https://mayorana.ch/en/apps/shipscreen" />
@@ -89,13 +89,13 @@
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="ShipScreen">
         <Component Id="App">
-          <File Id="ShipScreenExe" Source="..\target\release\shipscreen.exe" KeyPath="yes" />
+          <File Id="ShipScreenExe" Source="target\release\shipscreen.exe" KeyPath="yes" />
         </Component>
         <Component Id="WebView2Loader">
-          <File Source="..\target\release\WebView2Loader.dll" KeyPath="yes" />
+          <File Source="target\release\WebView2Loader.dll" KeyPath="yes" />
         </Component>
         <Component Id="AppIcon">
-          <File Id="IconFile" Source="..\assets\icon.ico" KeyPath="yes" />
+          <File Id="IconFile" Source="assets\icon.ico" KeyPath="yes" />
         </Component>
       </Directory>
     </StandardDirectory>
