@@ -27,6 +27,42 @@ if [ -n "$LIB_VERSION" ] && [ "$DX_VERSION" != "$LIB_VERSION" ]; then
 fi
 echo "dx: $DX_VERSION ($(command -v dx))""#;
 
+/// Launcher icons for every Android script, from one place: a hand-made
+/// `mipmap-*` set in manual_assets/android_icons, else a set made with sips
+/// from Dioxus.toml's `[bundle] icon` (or assets/icon.png). With neither,
+/// dx's own icons are left as they are. Expects `$RES_DIR`.
+const ANDROID_ICONS: &str = r#"SOURCE_ICONS="manual_assets/android_icons"
+if ! ls -d "$SOURCE_ICONS"/mipmap-* >/dev/null 2>&1; then
+    ICON_SRC=$(awk '/^\[/ { b = ($0 == "[bundle]") } b && /^icon *=/ { split($0, a, "\""); print a[2]; exit }' Dioxus.toml 2>/dev/null || true)
+    if [ -z "$ICON_SRC" ] || [ ! -f "$ICON_SRC" ]; then
+        ICON_SRC="assets/icon.png"
+    fi
+    if [ -f "$ICON_SRC" ]; then
+        SOURCE_ICONS="$(mktemp -d)/android_icons"
+        for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            mkdir -p "$SOURCE_ICONS/mipmap-${d%%:*}"
+            sips -s format png -z "${d##*:}" "${d##*:}" "$ICON_SRC" --out "$SOURCE_ICONS/mipmap-${d%%:*}/ic_launcher.png" >/dev/null
+            cp "$SOURCE_ICONS/mipmap-${d%%:*}/ic_launcher.png" "$SOURCE_ICONS/mipmap-${d%%:*}/ic_launcher_round.png"
+        done
+        echo "   Launcher icons made from $ICON_SRC"
+    else
+        SOURCE_ICONS=""
+    fi
+fi
+if [ -d "$RES_DIR" ] && [ -n "$SOURCE_ICONS" ]; then
+    find "$RES_DIR" -name "ic_launcher.webp" -delete
+    find "$RES_DIR" -name "ic_launcher_round.webp" -delete
+    # Adaptive icon XMLs override PNGs on Android 8+ and show the default robot icon
+    rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
+    rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
+    cp -r "$SOURCE_ICONS/"mipmap-* "$RES_DIR/"
+    echo "✅ Icons updated."
+elif [ -z "$SOURCE_ICONS" ]; then
+    echo "⚠️  No app icon found (set a logo in ShipScreen, or put a mipmap-* set in manual_assets/android_icons) — keeping dx's default icons."
+else
+    echo "⚠️  Warning: Resources directory not found."
+fi"#;
+
 /// Generate the script content for `build_ios_distribution.sh`.
 /// Only the 4 top variables are substituted; everything else is verbatim.
 pub(super) fn script_ios_distribution(
@@ -426,19 +462,7 @@ fi
 # 2. Resource & Icon Fixes
 echo "🎨 Fixing resources and icons..."
 RES_DIR="target/dx/$PROJECT_NAME/release/android/app/app/src/main/res"
-SOURCE_ICONS="manual_assets/android_icons"
-
-if [ -d "$RES_DIR" ] && [ -d "$SOURCE_ICONS" ]; then
-    find "$RES_DIR" -name "ic_launcher.webp" -delete
-    find "$RES_DIR" -name "ic_launcher_round.webp" -delete
-    # Remove adaptive icon XMLs — they override PNGs on Android 8+ and show the default robot icon
-    rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
-    rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
-    cp -r "$SOURCE_ICONS/mipmap-"* "$RES_DIR/"
-    echo "✅ Icons updated."
-else
-    echo "⚠️  Warning: Resources directory not found."
-fi
+{ANDROID_ICONS}
 
 # 3. Package Name Fixes
 echo "🔧 Fixing Package Name..."
@@ -560,20 +584,9 @@ if ! dx bundle --platform android --release; then
     echo "Attempting to resolve duplicate resources..."
 fi
 
-TARGET_RES="target/dx/{project_slug}/release/android/app/app/src/main/res"
-SOURCE_ICONS="assets/icons/android"
-
-if [ -d "$TARGET_RES" ] && [ -d "$SOURCE_ICONS" ]; then
-    echo "🧹 Cleaning up ALL existing launcher icons in target..."
-    find "$TARGET_RES" -name "ic_launcher.webp" -delete
-    find "$TARGET_RES" -name "ic_launcher.png" -delete
-    find "$TARGET_RES" -name "ic_launcher_round.webp" -delete
-    find "$TARGET_RES" -name "ic_launcher_round.png" -delete
-    echo "📂 Copying correct icons from $SOURCE_ICONS..."
-    cp -R "$SOURCE_ICONS/"* "$TARGET_RES/"
-else
-    echo "❌ Target resources or source icons not found. Build may fail."
-fi
+echo "🎨 Fixing launcher icons..."
+RES_DIR="target/dx/{project_slug}/release/android/app/app/src/main/res"
+{ANDROID_ICONS}
 
 echo "Resuming build with Gradle..."
 cd target/dx/{project_slug}/release/android/app
@@ -624,20 +637,25 @@ echo "Build Tools: $LATEST_BUILD_TOOLS"
 {DX_CHECK}
 echo
 
+# The debug key only exists once Android Studio has built something; make it
+# now rather than fail at signing after the whole build.
+DEBUG_KEYSTORE="$HOME/.android/debug.keystore"
+if [ ! -f "$DEBUG_KEYSTORE" ]; then
+    echo "🔑 Creating the debug keystore at $DEBUG_KEYSTORE..."
+    mkdir -p "$HOME/.android"
+    keytool -genkeypair -keystore "$DEBUG_KEYSTORE" -storepass android -keypass android \
+        -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+        -dname "CN=Android Debug,O=Android,C=US"
+fi
+
 echo "🧹 Cleaning previous build..."
 rm -rf "target/dx/$PROJECT_NAME/release/android"
 
 dx build --platform android --release
 
-echo "🔧 Copying custom icons..."
+echo "🎨 Fixing launcher icons..."
 RES_DIR="target/dx/$PROJECT_NAME/release/android/app/app/src/main/res"
-find "$RES_DIR" -name "ic_launcher.webp" -delete
-find "$RES_DIR" -name "ic_launcher_round.webp" -delete
-# Remove adaptive icon XMLs — they override PNGs on Android 8+ and show the default robot icon
-rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher.xml"
-rm -f "$RES_DIR/mipmap-anydpi-v26/ic_launcher_round.xml"
-cp -r manual_assets/android_icons/mipmap-* "$RES_DIR/"
-echo "✅ Icons copied successfully."
+{ANDROID_ICONS}
 
 BUILD_DIR="target/dx/$PROJECT_NAME/release/android/app"
 BUILD_GRADLE="$BUILD_DIR/app/build.gradle.kts"
@@ -676,7 +694,7 @@ if [[ -f "$GENERATED_APK" ]]; then
     rm -f "$ALIGNED_APK"
     "$ZIPALIGN" -v -p 4 "$GENERATED_APK" "$ALIGNED_APK" > /dev/null
     echo "  > Signing (v1 + v2)..."
-    "$APKSIGNER" sign --ks "$HOME/.android/debug.keystore" \
+    "$APKSIGNER" sign --ks "$DEBUG_KEYSTORE" \
                       --ks-pass pass:android \
                       --key-pass pass:android \
                       --out "$SIGNED_APK" \

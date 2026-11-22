@@ -38,6 +38,142 @@ pub(super) fn gradle_value(gradle: &str, key: &str) -> Option<String> {
     })
 }
 
+/// What the AAB's own manifest says. Read from the bundle rather than from
+/// the Gradle file dx generates: every dx run rewrites that file, so after an
+/// APK build or `dx serve` it no longer describes the bundle on disk.
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct AabManifest {
+    pub package: Option<String>,
+    pub version_code: Option<u32>,
+    pub version_name: Option<String>,
+    pub target_sdk: Option<u32>,
+}
+
+/// Reads `base/manifest/AndroidManifest.xml` (aapt2's protobuf XML) out of
+/// an AAB. None when the file can't be read or isn't a bundle.
+pub(crate) fn aab_manifest(aab: &Path) -> Option<AabManifest> {
+    let out = Command::new("unzip")
+        .quiet()
+        .arg("-p")
+        .arg(aab)
+        .arg("base/manifest/AndroidManifest.xml")
+        .output()
+        .ok()?;
+    if !out.status.success() || out.stdout.is_empty() {
+        return None;
+    }
+    parse_proto_manifest(&out.stdout)
+}
+
+/// One protobuf field: (number, varint value or length-delimited bytes).
+enum Field<'a> {
+    Varint(u64),
+    Bytes(&'a [u8]),
+}
+
+fn varint(buf: &[u8], pos: &mut usize) -> Option<u64> {
+    let mut v = 0u64;
+    for shift in (0..64).step_by(7) {
+        let b = *buf.get(*pos)?;
+        *pos += 1;
+        v |= u64::from(b & 0x7f) << shift;
+        if b & 0x80 == 0 {
+            return Some(v);
+        }
+    }
+    None
+}
+
+/// The fields of one protobuf message, in order. Stops at the first
+/// malformed byte.
+fn fields(buf: &[u8]) -> Vec<(u64, Field<'_>)> {
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while pos < buf.len() {
+        let Some(key) = varint(buf, &mut pos) else {
+            break;
+        };
+        let field = match key & 7 {
+            0 => match varint(buf, &mut pos) {
+                Some(v) => Field::Varint(v),
+                None => break,
+            },
+            1 => {
+                pos += 8;
+                continue;
+            }
+            2 => {
+                let Some(len) = varint(buf, &mut pos) else {
+                    break;
+                };
+                let Some(bytes) = buf.get(pos..pos + len as usize) else {
+                    break;
+                };
+                pos += len as usize;
+                Field::Bytes(bytes)
+            }
+            5 => {
+                pos += 4;
+                continue;
+            }
+            _ => break,
+        };
+        out.push((key >> 3, field));
+    }
+    out
+}
+
+fn sub(buf: &[u8], number: u64) -> impl Iterator<Item = &[u8]> {
+    fields(buf).into_iter().filter_map(move |(n, f)| match f {
+        Field::Bytes(b) if n == number => Some(b),
+        _ => None,
+    })
+}
+
+fn text(buf: &[u8], number: u64) -> Option<String> {
+    sub(buf, number)
+        .next()
+        .map(|b| String::from_utf8_lossy(b).into_owned())
+}
+
+/// An XmlElement's attribute value by local name: its source text, or the
+/// compiled integer when aapt2 dropped the text.
+fn attribute(element: &[u8], name: &str) -> Option<String> {
+    sub(element, 4).find_map(|attr| {
+        if text(attr, 2).as_deref() != Some(name) {
+            return None;
+        }
+        if let Some(v) = text(attr, 3).filter(|v| !v.is_empty()) {
+            return Some(v);
+        }
+        // compiled_item (6) → prim (7) → int_decimal (6) / int_hex (7)
+        let prim = sub(attr, 6).next().and_then(|item| sub(item, 7).next())?;
+        fields(prim).into_iter().find_map(|(n, f)| match f {
+            Field::Varint(v) if n == 6 || n == 7 => Some((v as u32).to_string()),
+            _ => None,
+        })
+    })
+}
+
+/// XmlNode (element = 1) → XmlElement { name = 3, attribute = 4, child = 5 }.
+fn parse_proto_manifest(buf: &[u8]) -> Option<AabManifest> {
+    let root = sub(buf, 1).next()?;
+    if text(root, 3).as_deref() != Some("manifest") {
+        return None;
+    }
+    let uses_sdk = sub(root, 5)
+        .filter_map(|node| sub(node, 1).next())
+        .find(|el| text(el, 3).as_deref() == Some("uses-sdk"));
+    Some(AabManifest {
+        package: attribute(root, "package"),
+        version_code: attribute(root, "versionCode").and_then(|v| v.parse().ok()),
+        version_name: attribute(root, "versionName"),
+        target_sdk: uses_sdk
+            .and_then(|el| attribute(el, "targetSdkVersion"))
+            .and_then(|v| v.parse().ok()),
+    })
+}
+
 /// Checks for the newest AAB. `expected_fingerprint` is the upload key's,
 /// when its password is available to read it.
 pub(super) fn verify_aab(
@@ -77,19 +213,36 @@ pub(super) fn verify_aab(
         )),
     }
 
-    // The Gradle file the release script patched is what produced the bundle.
-    let gradle_path = project.join(format!(
+    // The bundle's own manifest; the Gradle file dx generates is only a
+    // fallback, since any later dx run rewrites it.
+    let manifest = aab_manifest(aab).unwrap_or_default();
+    let gradle = std::fs::read_to_string(project.join(format!(
         "target/dx/{slug}/release/android/app/app/build.gradle.kts"
-    ));
-    let Ok(gradle) = std::fs::read_to_string(&gradle_path) else {
+    )))
+    .unwrap_or_default();
+    let app_id = manifest
+        .package
+        .clone()
+        .or_else(|| gradle_value(&gradle, "applicationId"));
+    let target = manifest
+        .target_sdk
+        .or_else(|| gradle_value(&gradle, "targetSdk").and_then(|v| v.parse().ok()));
+    let code = manifest
+        .version_code
+        .map(|c| c.to_string())
+        .or_else(|| gradle_value(&gradle, "versionCode"));
+    let name = manifest
+        .version_name
+        .clone()
+        .or_else(|| gradle_value(&gradle, "versionName"));
+    let Some(app_id) = app_id else {
         checks.push(check(
             "Build settings",
             false,
-            "Gradle project not found — rebuild to check package, version and target API",
+            "Couldn't read the bundle's manifest — rebuild to check package, version and target API",
         ));
         return checks;
     };
-    let app_id = gradle_value(&gradle, "applicationId").unwrap_or_default();
     checks.push(check(
         "Package",
         !package.is_empty() && app_id == package,
@@ -99,9 +252,7 @@ pub(super) fn verify_aab(
             format!("Built as {app_id}, but the app is {package}")
         },
     ));
-    let target: u32 = gradle_value(&gradle, "targetSdk")
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
+    let target = target.unwrap_or(0);
     checks.push(check(
         "Target API",
         target >= 36,
@@ -111,8 +262,8 @@ pub(super) fn verify_aab(
             format!("API {target} — Google Play requires 36 for updates")
         },
     ));
-    let code = gradle_value(&gradle, "versionCode").unwrap_or_default();
-    let name = gradle_value(&gradle, "versionName").unwrap_or_default();
+    let code = code.unwrap_or_default();
+    let name = name.unwrap_or_default();
     checks.push(check(
         "Version",
         !code.is_empty(),
@@ -211,6 +362,60 @@ pub(super) fn verify_ipa(ipa: &Path, bundle_id: &str) -> Vec<CredCheck> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn len_field(n: u64, body: &[u8]) -> Vec<u8> {
+        let mut out = vec![((n << 3) | 2) as u8];
+        let mut len = body.len();
+        loop {
+            let b = (len & 0x7f) as u8;
+            len >>= 7;
+            if len == 0 {
+                out.push(b);
+                break;
+            }
+            out.push(b | 0x80);
+        }
+        out.extend_from_slice(body);
+        out
+    }
+
+    fn attr(name: &str, value: &str) -> Vec<u8> {
+        let mut a = len_field(1, b"http://schemas.android.com/apk/res/android");
+        a.extend(len_field(2, name.as_bytes()));
+        a.extend(len_field(3, value.as_bytes()));
+        len_field(4, &a)
+    }
+
+    #[test]
+    fn reads_the_proto_manifest_of_a_bundle() {
+        let mut sdk = len_field(3, b"uses-sdk");
+        sdk.extend(attr("minSdkVersion", "24"));
+        sdk.extend(attr("targetSdkVersion", "36"));
+        let mut root = len_field(3, b"manifest");
+        root.extend(attr("package", "com.mayorana.scan2fil"));
+        root.extend(attr("versionCode", "3"));
+        root.extend(attr("versionName", "1.0"));
+        root.extend(len_field(5, &len_field(1, &sdk)));
+        // versionCode compiled only: compiled_item → prim → int_decimal = 12
+        let mut compiled = len_field(2, b"versionCode");
+        compiled.extend(len_field(6, &len_field(7, &[6 << 3, 12])));
+        let only_compiled = [len_field(3, b"manifest"), len_field(4, &compiled)].concat();
+
+        assert_eq!(
+            parse_proto_manifest(&len_field(1, &root)),
+            Some(AabManifest {
+                package: Some("com.mayorana.scan2fil".into()),
+                version_code: Some(3),
+                version_name: Some("1.0".into()),
+                target_sdk: Some(36),
+            })
+        );
+        assert_eq!(
+            parse_proto_manifest(&len_field(1, &only_compiled)).and_then(|m| m.version_code),
+            Some(12)
+        );
+        assert_eq!(parse_proto_manifest(b"not a manifest"), None);
+    }
 
     #[test]
     fn reads_gradle_values() {

@@ -640,11 +640,14 @@ pub(crate) fn release_aab(ws: Ws) {
 
             // Refuse early rather than after a long upload: the bundle's
             // versionCode must beat everything already on Play.
-            let gradle = std::fs::read_to_string(
-                dir.join(format!("target/dx/{}/release/android/app/app/build.gradle.kts", p.project_slug)),
-            )
-            .unwrap_or_default();
-            if let Some(code) = verify::gradle_value(&gradle, "versionCode").and_then(|v| v.parse::<u32>().ok()) {
+            // Read it from the bundle itself: the Gradle file dx generates is
+            // rewritten by every dx run and may describe another build.
+            let aab_path = aab.path.clone();
+            let manifest = tokio::task::spawn_blocking(move || verify::aab_manifest(&aab_path))
+                .await
+                .ok()
+                .flatten();
+            if let Some(code) = manifest.and_then(|m| m.version_code) {
                 if let Some((max, track)) = stores::play_max_version_code(&token, &package, &edit_id).await? {
                     if code <= max {
                         let _ = google_play_delete_edit(&token, &package, &edit_id).await;
