@@ -78,20 +78,37 @@ fn gradlew(build_dir: &Path) -> PathBuf {
     })
 }
 
-/// The Dioxus CLI. Cargo's own copy first: Homebrew's deno installs a `dx`
-/// too, and it can come first on PATH.
-pub(super) fn dx_command() -> PathBuf {
-    let exe = if cfg!(windows) { "dx.exe" } else { "dx" };
+/// The Dioxus CLI for this project. A project that pins a Dioxus version of
+/// its own keeps the matching CLI inside it (`cargo install dioxus-cli
+/// --version <v> --locked --root .tools`), so that one wins; then Cargo's
+/// own copy, since Homebrew's deno installs a `dx` too and it can come first
+/// on PATH; then whatever PATH has.
+pub(super) fn dx_command(project: &Path) -> PathBuf {
+    if let Some(local) = project_dx(project) {
+        return local;
+    }
     let cargo_dx = std::env::var_os("CARGO_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".cargo"))
         .join("bin")
-        .join(exe);
+        .join(DX_EXE);
     if cargo_dx.is_file() {
         cargo_dx
     } else {
         PathBuf::from("dx")
     }
+}
+
+const DX_EXE: &str = if cfg!(windows) { "dx.exe" } else { "dx" };
+
+/// Where a project keeps its own Dioxus CLI.
+pub(super) fn project_tools_bin(project: &Path) -> PathBuf {
+    project.join(".tools").join("bin")
+}
+
+/// `<project>/.tools/bin/dx`, if the project has one.
+pub(super) fn project_dx(project: &Path) -> Option<PathBuf> {
+    Some(project_tools_bin(project).join(DX_EXE)).filter(|p| p.is_file())
 }
 
 /// Show a file in the system's file manager.
@@ -437,7 +454,7 @@ pub(super) async fn run(
     ));
 
     // dx refuses to bundle a project whose Dioxus library is a different version.
-    let dx = dx_command();
+    let dx = dx_command(&project);
     let version = Command::new(&dx)
         .quiet()
         .arg("--version")
@@ -453,7 +470,7 @@ pub(super) async fn run(
             return Err(format!("the dx found is {name}'s, not the Dioxus CLI — install it with: cargo install dioxus-cli --locked"))
         }
         (doctor::Dx::Dioxus(d), Some(l)) if d != *l => {
-            return Err(format!("dx is {d} but this project uses dioxus {l} — the Doctor above can switch the project to {d}."))
+            return Err(format!("dx is {d} but this project uses dioxus {l} — the Doctor above can switch the project to {d}, or install dx {l} into the project."))
         }
         _ => {}
     }
@@ -652,6 +669,21 @@ fn sign_debug_apk(apk: &Path, sdk: &Path, target: &Path, say: &mut impl FnMut(St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_projects_own_dx_comes_before_the_one_on_path() {
+        let dir = std::env::temp_dir().join("shipscreen-test-project-dx");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(project_dx(&dir), None);
+        assert_ne!(dx_command(&dir), project_tools_bin(&dir).join(DX_EXE));
+
+        let local = project_tools_bin(&dir).join(DX_EXE);
+        std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+        std::fs::write(&local, "").unwrap();
+        assert_eq!(project_dx(&dir).as_deref(), Some(local.as_path()));
+        assert_eq!(dx_command(&dir), local);
+    }
 
     const GRADLE: &str = r#"android {
     namespace = "com.example.Nahw"

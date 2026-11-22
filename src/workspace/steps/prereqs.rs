@@ -52,7 +52,7 @@ pub(crate) fn DoctorCard() -> Element {
                                 div { class: "check-text",
                                     div { class: "check-head",
                                         span { class: "check-label", "{item.label}" }
-                                        if let Some(fix) = item.fix.clone() {
+                                        for fix in item.fixes.clone() {
                                             button {
                                                 class: "check-fix",
                                                 disabled: matches!(fix_state(), JobState::Running(_)),

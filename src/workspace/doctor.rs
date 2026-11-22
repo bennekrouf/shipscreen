@@ -13,6 +13,9 @@ pub(super) enum Fix {
     RustTargets(Vec<&'static str>),
     /// `cargo update -p dioxus --precise <version>` in the project
     DioxusVersion(String),
+    /// `cargo install dioxus-cli --version <version> --locked --root .tools`
+    /// in the project: the CLI the project's own Dioxus needs, kept beside it
+    InstallDx(String),
     /// Open Android Studio (SDK Manager is on its welcome screen)
     AndroidStudio,
     /// Rewrite Dioxus.toml's `[android]` for dx 0.7
@@ -28,6 +31,7 @@ impl Fix {
         match self {
             Fix::RustTargets(_) => "Install".into(),
             Fix::DioxusVersion(v) => format!("Use Dioxus {v}"),
+            Fix::InstallDx(v) => format!("Install dx {v} in the project"),
             Fix::AndroidStudio => "Open Android Studio".into(),
             Fix::DioxusToml => "Fix Dioxus.toml".into(),
             Fix::GoTo(step) => format!("{} →", step.label()),
@@ -43,7 +47,8 @@ pub(super) struct DoctorItem {
     pub label: &'static str,
     pub ok: bool,
     pub detail: String,
-    pub fix: Option<Fix>,
+    /// What can be done about it, most likely first.
+    pub fixes: Vec<Fix>,
 }
 
 const ANDROID_RUST_TARGETS: [&str; 4] = [
@@ -159,47 +164,18 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
     };
 
     // ── dx and the project's Dioxus version ──────────────────────────────
-    // The same dx the Android build runs (Cargo's own copy first).
+    // The same dx the Android build runs: the project's own copy in
+    // .tools/bin first, then Cargo's.
+    let local_dx = dioxus && android_build::project_dx(dir).is_some();
     let dx = if dioxus {
-        dx_from(output(Command::new(android_build::dx_command()).arg("--version")).as_deref())
+        dx_from(output(Command::new(android_build::dx_command(dir)).arg("--version")).as_deref())
     } else {
         Dx::Missing
     };
     let lib = std::fs::read_to_string(dir.join("Cargo.lock"))
         .ok()
         .and_then(|l| locked_dioxus(&l));
-    items.push(match (&dx, &lib) {
-        (Dx::Missing, _) => DoctorItem {
-            section: "Tools",
-            label: "Dioxus CLI (dx)",
-            ok: false,
-            detail: "dx not found — install it with: cargo install dioxus-cli --locked".into(),
-            fix: None,
-        },
-        (Dx::Other(name), _) => DoctorItem {
-            section: "Tools",
-            label: "Dioxus CLI (dx)",
-            ok: false,
-            detail: format!(
-                "the dx found is {name}'s, not the Dioxus CLI — install it with: cargo install dioxus-cli --locked"
-            ),
-            fix: None,
-        },
-        (Dx::Dioxus(d), Some(l)) if d != l => DoctorItem {
-            section: "Tools",
-            label: "dx matches the project",
-            ok: false,
-            detail: format!("dx is {d}, the project uses dioxus {l} — dx refuses to bundle a different version"),
-            fix: Some(Fix::DioxusVersion(d.clone())),
-        },
-        (Dx::Dioxus(d), _) => DoctorItem {
-            section: "Tools",
-            label: "dx matches the project",
-            ok: true,
-            detail: format!("dx {d}{}", lib.as_ref().map(|l| format!(" · dioxus {l}")).unwrap_or_default()),
-            fix: None,
-        },
-    });
+    items.push(dx_item(&dx, lib.as_deref(), local_dx));
 
     // ── Android ──────────────────────────────────────────────────────────
     if platform.has_android() {
@@ -215,7 +191,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 issues.join(" · ")
             },
-            fix: (!issues.is_empty()).then_some(Fix::DioxusToml),
+            fixes: (!issues.is_empty())
+                .then_some(Fix::DioxusToml)
+                .into_iter()
+                .collect(),
         });
         let sdk = android_home();
         let target = if dioxus {
@@ -258,7 +237,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 format!("Not found at {} — install Android Studio", sdk.display())
             },
-            fix: (!sdk.is_dir()).then_some(Fix::AndroidStudio),
+            fixes: (!sdk.is_dir())
+                .then_some(Fix::AndroidStudio)
+                .into_iter()
+                .collect(),
         });
         items.push(DoctorItem {
             section: "Android",
@@ -269,7 +251,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 ndk.join(", ")
             },
-            fix: ndk.is_empty().then_some(Fix::AndroidStudio),
+            fixes: ndk
+                .is_empty()
+                .then_some(Fix::AndroidStudio)
+                .into_iter()
+                .collect(),
         });
         let has_platform = platforms.iter().any(|p| {
             p == &format!("android-{target}") || p.starts_with(&format!("android-{target}."))
@@ -283,7 +269,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 format!("API {target} missing — SDK Manager → SDK Platforms")
             },
-            fix: (!has_platform).then_some(Fix::AndroidStudio),
+            fixes: (!has_platform)
+                .then_some(Fix::AndroidStudio)
+                .into_iter()
+                .collect(),
         });
         items.push(DoctorItem {
             section: "Android",
@@ -294,7 +283,11 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 build_tools.join(", ")
             },
-            fix: build_tools.is_empty().then_some(Fix::AndroidStudio),
+            fixes: build_tools
+                .is_empty()
+                .then_some(Fix::AndroidStudio)
+                .into_iter()
+                .collect(),
         });
         items.push(DoctorItem {
             section: "Android",
@@ -311,7 +304,7 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
                 (Some(_), None) => java_notes.join(" · "),
                 (None, None) => unreachable!(),
             },
-            fix: java_fix,
+            fixes: java_fix.into_iter().collect(),
         });
         items.push(DoctorItem {
             section: "Android",
@@ -322,7 +315,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 format!("Missing: {}", rust_missing.join(", "))
             },
-            fix: (!rust_missing.is_empty()).then_some(Fix::RustTargets(rust_missing)),
+            fixes: (!rust_missing.is_empty())
+                .then_some(Fix::RustTargets(rust_missing))
+                .into_iter()
+                .collect(),
         });
     }
 
@@ -347,7 +343,7 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             label: "Xcode",
             ok: sdk.is_some(),
             detail,
-            fix: None,
+            fixes: Vec::new(),
         });
         let rust_missing = missing(&IOS_RUST_TARGETS);
         items.push(DoctorItem {
@@ -359,7 +355,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 format!("Missing: {}", rust_missing.join(", "))
             },
-            fix: (!rust_missing.is_empty()).then_some(Fix::RustTargets(rust_missing)),
+            fixes: (!rust_missing.is_empty())
+                .then_some(Fix::RustTargets(rust_missing))
+                .into_iter()
+                .collect(),
         });
         let identities =
             output(Command::new("security").args(["find-identity", "-v", "-p", "codesigning"]))
@@ -377,7 +376,10 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
             } else {
                 format!("\"{apple_identity}\" isn't a valid identity in the keychain")
             },
-            fix: (!found).then_some(Fix::GoTo(Step::Accounts)),
+            fixes: (!found)
+                .then_some(Fix::GoTo(Step::Accounts))
+                .into_iter()
+                .collect(),
         });
     }
     if !dioxus {
@@ -396,6 +398,57 @@ pub(super) fn run(dir: &Path, platform: &PlatformType, apple_identity: &str) -> 
         });
     }
     items
+}
+
+/// The Doctor's line for dx: found, the Dioxus CLI, and the version the
+/// project's Cargo.lock pins. `local` says the dx is the project's own, in
+/// `.tools/bin`.
+pub(super) fn dx_item(dx: &Dx, lib: Option<&str>, local: bool) -> DoctorItem {
+    let install_here = || lib.map(|l| Fix::InstallDx(l.to_string()));
+    let which = if local {
+        " (the project's own, in .tools/bin)"
+    } else {
+        ""
+    };
+    match (dx, lib) {
+        (Dx::Missing, _) => DoctorItem {
+            section: "Tools",
+            label: "Dioxus CLI (dx)",
+            ok: false,
+            detail: "dx not found — install it with: cargo install dioxus-cli --locked".into(),
+            fixes: install_here().into_iter().collect(),
+        },
+        (Dx::Other(name), _) => DoctorItem {
+            section: "Tools",
+            label: "Dioxus CLI (dx)",
+            ok: false,
+            detail: format!(
+                "the dx found is {name}'s, not the Dioxus CLI — install it with: cargo install dioxus-cli --locked"
+            ),
+            fixes: install_here().into_iter().collect(),
+        },
+        (Dx::Dioxus(d), Some(l)) if d != l => DoctorItem {
+            section: "Tools",
+            label: "dx matches the project",
+            ok: false,
+            detail: format!(
+                "dx is {d}{which}, the project uses dioxus {l} — dx refuses to bundle a different version. \
+                 Move the project to {d}, or install dx {l} into the project's .tools folder \
+                 (other projects keep using dx {d})"
+            ),
+            fixes: vec![Fix::DioxusVersion(d.clone()), Fix::InstallDx(l.to_string())],
+        },
+        (Dx::Dioxus(d), _) => DoctorItem {
+            section: "Tools",
+            label: "dx matches the project",
+            ok: true,
+            detail: format!(
+                "dx {d}{which}{}",
+                lib.map(|l| format!(" · dioxus {l}")).unwrap_or_default()
+            ),
+            fixes: Vec::new(),
+        },
+    }
 }
 
 /// `targetSdk` as the project's own Gradle file states it, for a project
@@ -457,6 +510,21 @@ pub(super) fn apply(dir: &Path, fix: &Fix) -> Result<String, String> {
                 "Project now uses dioxus {v} (Cargo.lock updated — commit it)"
             ))
         }
+        Fix::InstallDx(v) => {
+            done(Command::new("cargo").current_dir(dir).args([
+                "install",
+                "dioxus-cli",
+                "--version",
+                v,
+                "--locked",
+                "--root",
+                ".tools",
+            ]))?;
+            ignore_tools_folder(dir)?;
+            Ok(format!(
+                "dx {v} installed in .tools/bin — this project's builds use it, other projects keep theirs"
+            ))
+        }
         Fix::AndroidStudio => {
             let not_found = || {
                 "Android Studio not found — install it from https://developer.android.com/studio"
@@ -507,6 +575,25 @@ pub(super) fn apply(dir: &Path, fix: &Fix) -> Result<String, String> {
     }
 }
 
+/// Keep a project's own tools out of its repository: `.tools` holds a
+/// compiled dx, not source.
+fn ignore_tools_folder(dir: &Path) -> Result<(), String> {
+    let path = dir.join(".gitignore");
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let covered = existing
+        .lines()
+        .any(|l| matches!(l.trim(), ".tools" | ".tools/" | "/.tools" | "/.tools/"));
+    if covered {
+        return Ok(());
+    }
+    let sep = if existing.is_empty() || existing.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    std::fs::write(&path, format!("{existing}{sep}/.tools\n")).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,6 +617,49 @@ mod tests {
             35
         );
         assert_eq!(target_sdk("[bundle]\nidentifier = \"x\"\n"), 36);
+    }
+
+    #[test]
+    fn a_dx_mismatch_offers_both_directions() {
+        let item = dx_item(&Dx::Dioxus("0.7.10".into()), Some("0.8.0-alpha.3"), false);
+        assert!(!item.ok);
+        assert_eq!(
+            item.fixes,
+            vec![
+                Fix::DioxusVersion("0.7.10".into()),
+                Fix::InstallDx("0.8.0-alpha.3".into())
+            ]
+        );
+        assert_eq!(
+            item.fixes[1].label(),
+            "Install dx 0.8.0-alpha.3 in the project"
+        );
+
+        let item = dx_item(
+            &Dx::Dioxus("0.8.0-alpha.3".into()),
+            Some("0.8.0-alpha.3"),
+            true,
+        );
+        assert!(item.ok && item.fixes.is_empty());
+        assert!(item.detail.contains(".tools/bin"), "{}", item.detail);
+
+        let item = dx_item(&Dx::Missing, Some("0.7.10"), false);
+        assert_eq!(item.fixes, vec![Fix::InstallDx("0.7.10".into())]);
+        assert!(dx_item(&Dx::Missing, None, false).fixes.is_empty());
+    }
+
+    #[test]
+    fn installing_dx_keeps_the_tools_folder_out_of_git() {
+        let dir = std::env::temp_dir().join("shipscreen-test-ignore-tools");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(".gitignore"), "/target").unwrap();
+        ignore_tools_folder(&dir).unwrap();
+        ignore_tools_folder(&dir).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".gitignore")).unwrap(),
+            "/target\n/.tools\n"
+        );
     }
 
     #[test]
