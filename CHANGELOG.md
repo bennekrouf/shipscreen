@@ -15,6 +15,28 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Added
+
+- When the Dioxus CLI (`dx`) doesn't match the Dioxus version your project uses,
+  the Doctor now offers a second fix: install the matching `dx` into the
+  project's `.tools` folder, so other projects keep the `dx` they use. Moving
+  the project to your installed `dx` is still offered, and `.tools` is added to
+  your `.gitignore`.
+
+### Fixed
+
+- Projects that keep their own `dx` in `.tools/bin` (installed with
+  `cargo install dioxus-cli --version <v> --locked --root .tools`) now build:
+  the iOS, APK and AAB builds and the Doctor use that `dx` before the one on
+  your PATH, instead of stopping with "dx is 0.7.10 but this project uses
+  dioxus 0.8…".
+- `build_apk.sh` and `build_android.sh` now check that `dx` matches the
+  project's Dioxus version before building, as `build_android_release.sh`
+  already did, so a mismatch stops with a clear message and both ways to fix it
+  rather than failing halfway through the build.
+
 ## [0.1.71] - 2026-11-17
 
 ### Changed

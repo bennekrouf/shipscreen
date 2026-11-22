@@ -217,6 +217,24 @@ pub(crate) async fn build(i: BuildInputs, script_name: String, log: Log) -> Resu
         child_env.push(("PATH".into(), path.to_string_lossy().to_string()));
     }
 
+    // A project that pins its own Dioxus keeps the matching CLI in
+    // .tools/bin: every script, the developer's own included, finds it first.
+    if android_build::project_dx(&dir).is_some() {
+        let path = child_env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == "PATH")
+            .map(|(_, v)| v.into())
+            .or_else(|| std::env::var_os("PATH"))
+            .unwrap_or_default();
+        let path = std::env::join_paths(
+            std::iter::once(android_build::project_tools_bin(&dir))
+                .chain(std::env::split_paths(&path)),
+        )
+        .unwrap_or(path);
+        child_env.push(("PATH".into(), path.to_string_lossy().to_string()));
+    }
+
     // 3. Android builds ShipScreen owns run in ShipScreen itself, the same
     //    on every OS. A script the developer wrote runs as it is.
     let dioxus = is_dioxus_project(&dir);
