@@ -5508,7 +5508,7 @@ dependencies = [
 
 [[package]]
 name = "shipscreen"
-version = "0.1.72"
+version = "0.1.73"
 dependencies = [
  "ab_glyph",
  "age",
