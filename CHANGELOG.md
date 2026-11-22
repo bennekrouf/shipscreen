@@ -15,6 +15,27 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Fixed
+
+- Releasing to Google Play no longer refuses a good bundle with "This AAB's
+  versionCode 1 isn't higher than…". The versionCode, package, version and
+  target API are now read from the AAB itself, not from a build file that any
+  later APK build or `dx serve` overwrites, so the check before uploading and
+  the AAB checks in the Build step describe the bundle you are about to send.
+- Android builds now give your app its own launcher icon even if you never made
+  an Android icon set: the icons for every screen density are made from your
+  app's icon (the logo set in ShipScreen, or `[bundle] icon` in `Dioxus.toml`).
+  A hand-made set in `manual_assets/android_icons` is still used first. With no
+  icon at all, the build keeps the default icons instead of failing (APK) or
+  shipping with none (AAB). `build_apk.sh`, `build_android.sh` and
+  `build_android_release.sh` all work the same way now.
+- The APK build no longer fails at signing, after several minutes, on a Mac
+  where Android Studio has never built anything. The debug key Android uses
+  (`~/.android/debug.keystore`) is created before the build starts if it is
+  missing.
+
 ## [0.1.72] - 2026-11-22
 
 ### Added

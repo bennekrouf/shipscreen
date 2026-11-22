@@ -308,14 +308,120 @@ fn copy_dir(src: &Path, dest: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Replace dx's launcher icons with the project's own (manual_assets/android_icons).
-/// The adaptive-icon XMLs go too: on Android 8+ they win over the PNGs and
-/// show the default robot.
+/// Where a project keeps a hand-made launcher icon set (`mipmap-*` folders).
+/// The build scripts use the same folder.
+pub(super) const ANDROID_ICONS: &str = "manual_assets/android_icons";
+
+/// Launcher icon sizes, in pixels, for each density.
+const MIPMAP_SIZES: [(&str, u32); 5] = [
+    ("mdpi", 48),
+    ("hdpi", 72),
+    ("xhdpi", 96),
+    ("xxhdpi", 144),
+    ("xxxhdpi", 192),
+];
+
+/// The first `icon = [...]` entry of Dioxus.toml's `[bundle]` table.
+fn bundle_icon(toml: &str) -> Option<String> {
+    let mut in_bundle = false;
+    for line in toml.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_bundle = line == "[bundle]";
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if in_bundle && key.trim() == "icon" {
+            return value
+                .split('"')
+                .nth(1)
+                .filter(|v| !v.is_empty())
+                .map(str::to_string);
+        }
+    }
+    None
+}
+
+/// The image the launcher icons are made from: Dioxus.toml's `[bundle] icon`,
+/// else `assets/icon.png`, where ShipScreen copies the logo before each build.
+pub(super) fn launcher_icon_source(project: &Path) -> Option<PathBuf> {
+    let from_toml = std::fs::read_to_string(project.join("Dioxus.toml"))
+        .ok()
+        .and_then(|t| bundle_icon(&t))
+        .map(|rel| project.join(rel));
+    from_toml
+        .into_iter()
+        .chain(std::iter::once(project.join("assets/icon.png")))
+        .find(|p| {
+            p.is_file()
+                && p.extension().is_some_and(|e| {
+                    matches!(
+                        e.to_ascii_lowercase().to_str(),
+                        Some("png" | "jpg" | "jpeg")
+                    )
+                })
+        })
+}
+
+/// `ic_launcher.png` and `ic_launcher_round.png` for every density, as
+/// (relative path, image), made from one source image.
+fn launcher_icons(source: &Path) -> Result<Vec<(String, image::RgbaImage)>, String> {
+    let img = image::open(source)
+        .map_err(|e| format!("couldn't read {}: {e}", source.display()))?
+        .to_rgba8();
+    let mut out = Vec::new();
+    for (density, size) in MIPMAP_SIZES {
+        let square =
+            image::imageops::resize(&img, size, size, image::imageops::FilterType::Lanczos3);
+        let mut round = square.clone();
+        let r = size as f32 / 2.0;
+        for (x, y, px) in round.enumerate_pixels_mut() {
+            let (dx, dy) = (x as f32 + 0.5 - r, y as f32 + 0.5 - r);
+            if dx * dx + dy * dy > r * r {
+                px[3] = 0;
+            }
+        }
+        out.push((format!("mipmap-{density}/ic_launcher.png"), square));
+        out.push((format!("mipmap-{density}/ic_launcher_round.png"), round));
+    }
+    Ok(out)
+}
+
+/// Replace dx's launcher icons with the project's own: a hand-made set in
+/// manual_assets/android_icons if there is one, else a set made from the
+/// project's icon. With neither, dx's icons stay as they are. The
+/// adaptive-icon XMLs go too: on Android 8+ they win over the PNGs and show
+/// the default robot.
 fn use_project_icons(project: &Path, res: &Path) -> Result<Option<String>, String> {
-    let icons = project.join("manual_assets/android_icons");
-    if !res.is_dir() || !icons.is_dir() {
+    if !res.is_dir() {
         return Ok(None);
     }
+    let hand_made = project.join(ANDROID_ICONS);
+    let hand_made = std::fs::read_dir(&hand_made).ok().map(|d| {
+        d.flatten()
+            .filter(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("mipmap-"))
+            .map(|e| e.path())
+            .collect::<Vec<_>>()
+    });
+    let hand_made = hand_made.filter(|dirs| !dirs.is_empty());
+    // Everything is ready before dx's icons are touched.
+    let (generated, message) = match (&hand_made, launcher_icon_source(project)) {
+        (Some(_), _) => (Vec::new(), format!("Icons replaced with {ANDROID_ICONS}")),
+        (None, Some(src)) => {
+            let rel = src
+                .strip_prefix(project)
+                .unwrap_or(&src)
+                .display()
+                .to_string();
+            (
+                launcher_icons(&src)?,
+                format!("Launcher icons made from {rel}"),
+            )
+        }
+        (None, None) => return Ok(None),
+    };
+
     let mut stale = Vec::new();
     files_named(
         res,
@@ -331,20 +437,21 @@ fn use_project_icons(project: &Path, res: &Path) -> Result<Option<String>, Strin
     for xml in ["ic_launcher.xml", "ic_launcher_round.xml"] {
         let _ = std::fs::remove_file(res.join("mipmap-anydpi-v26").join(xml));
     }
-    for e in std::fs::read_dir(&icons)
-        .map_err(|e| e.to_string())?
-        .flatten()
-    {
-        if e.path().is_dir() && e.file_name().to_string_lossy().starts_with("mipmap-") {
-            copy_dir(&e.path(), &res.join(e.file_name())).map_err(|e| e.to_string())?;
-        }
+    for dir in hand_made.unwrap_or_default() {
+        let name = dir.file_name().unwrap_or_default();
+        copy_dir(&dir, &res.join(name)).map_err(|e| e.to_string())?;
     }
-    Ok(Some(
-        "Icons replaced with manual_assets/android_icons".into(),
-    ))
+    for (rel, img) in generated {
+        let path = res.join(rel);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        img.save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(Some(message))
 }
 
-/// Package name in Kotlin sources and the manifest, and the app's label.
 fn fix_sources(src: &Path, old_package: &str, package: &str, app_name: &str) -> Result<(), String> {
     let mut files = Vec::new();
     files_named(
@@ -493,6 +600,14 @@ pub(super) async fn run(
     say("🧹 Cleaning the previous Android build…".into());
     let _ = std::fs::remove_dir_all(&android_dir);
 
+    // 0. The debug key, made before a long build rather than missed after it.
+    if job.kind == Kind::DebugApk && ensure_debug_keystore(&debug_keystore())? {
+        say(format!(
+            "🔑 Created the debug keystore at {}",
+            debug_keystore().display()
+        ));
+    }
+
     // 1. dx generates the Gradle project. For the release build its own final
     //    Gradle step can fail (duplicate icons) — that's fixed and rebuilt
     //    below; what has to exist is the project.
@@ -520,8 +635,11 @@ pub(super) async fn run(
     }
 
     // 2. Icons, package name, version and signing.
-    if let Some(m) = use_project_icons(&project, &build_dir.join("app/src/main/res"))? {
-        say(format!("🎨 {m}"));
+    match use_project_icons(&project, &build_dir.join("app/src/main/res"))? {
+        Some(m) => say(format!("🎨 {m}")),
+        None => say(format!(
+            "🎨 No app icon found (set a logo in the App step, or put a mipmap-* set in {ANDROID_ICONS}) — keeping dx's default icons"
+        )),
     }
     let old_package = dx_default_package(&job.slug);
     let mut gradle = std::fs::read_to_string(&gradle_file).map_err(|e| e.to_string())?;
@@ -623,15 +741,61 @@ pub(super) async fn run(
     }
 }
 
-/// zipalign + apksigner with the debug keystore Gradle created, for an APK
-/// that installs on any device. False if the tools or key aren't there.
+/// `~/.android/debug.keystore`, the key every Android tool signs debug builds with.
+pub(super) fn debug_keystore() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".android/debug.keystore")
+}
+
+/// Make the debug keystore if this machine has none: it only appears once
+/// Android Studio has built something, and without it the APK can't be signed.
+fn ensure_debug_keystore(ks: &Path) -> Result<bool, String> {
+    if ks.is_file() {
+        return Ok(false);
+    }
+    if let Some(dir) = ks.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let out = Command::new(signing::jdk_tool("keytool"))
+        .quiet()
+        .args(["-genkeypair", "-keystore"])
+        .arg(ks)
+        .args([
+            "-storepass",
+            "android",
+            "-keypass",
+            "android",
+            "-alias",
+            "androiddebugkey",
+            "-keyalg",
+            "RSA",
+            "-keysize",
+            "2048",
+            "-validity",
+            "10000",
+            "-dname",
+            "CN=Android Debug,O=Android,C=US",
+        ])
+        .output()
+        .map_err(|e| format!("keytool: {e}"))?;
+    if out.status.success() {
+        Ok(true)
+    } else {
+        Err(format!(
+            "couldn't create the debug keystore: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// zipalign + apksigner with the debug keystore, for an APK that installs on
+/// any device. False if the tools or key aren't there.
 fn sign_debug_apk(apk: &Path, sdk: &Path, target: &Path, say: &mut impl FnMut(String)) -> bool {
     let Some(tools) = newest_version_dir(&sdk.join("build-tools")) else {
         return false;
     };
-    let debug_ks = dirs::home_dir()
-        .unwrap_or_default()
-        .join(".android/debug.keystore");
+    let debug_ks = debug_keystore();
     if !debug_ks.is_file() {
         return false;
     }
@@ -773,6 +937,19 @@ mod tests {
     }
 
     #[test]
+    fn makes_a_missing_debug_keystore_once() {
+        if signing::java_home().is_none() {
+            return; // no JDK
+        }
+        let dir = std::env::temp_dir().join("shipscreen-test-debug-ks");
+        let _ = std::fs::remove_dir_all(&dir);
+        let ks = dir.join(".android/debug.keystore");
+        assert_eq!(ensure_debug_keystore(&ks), Ok(true));
+        assert!(ks.is_file());
+        assert_eq!(ensure_debug_keystore(&ks), Ok(false));
+    }
+
+    #[test]
     fn replaces_icons_and_fixes_sources() {
         let p = std::env::temp_dir().join("shipscreen-test-android-fix");
         let _ = std::fs::remove_dir_all(&p);
@@ -794,6 +971,39 @@ mod tests {
             std::fs::read_to_string(res.join("mipmap-hdpi/ic_launcher.png")).unwrap(),
             "mine"
         );
+
+        // No hand-made set: made from Dioxus.toml's [bundle] icon.
+        let q = std::env::temp_dir().join("shipscreen-test-android-icons");
+        let _ = std::fs::remove_dir_all(&q);
+        let res2 = q.join("res");
+        std::fs::create_dir_all(res2.join("mipmap-hdpi")).unwrap();
+        std::fs::create_dir_all(res2.join("mipmap-anydpi-v26")).unwrap();
+        std::fs::write(res2.join("mipmap-hdpi/ic_launcher.webp"), "dx").unwrap();
+        std::fs::write(res2.join("mipmap-anydpi-v26/ic_launcher.xml"), "adaptive").unwrap();
+        // Nothing to use: dx's icons are left alone.
+        assert_eq!(use_project_icons(&q, &res2).unwrap(), None);
+        assert!(res2.join("mipmap-hdpi/ic_launcher.webp").exists());
+        assert!(res2.join("mipmap-anydpi-v26/ic_launcher.xml").exists());
+        std::fs::create_dir_all(q.join("art")).unwrap();
+        image::RgbaImage::from_pixel(512, 512, image::Rgba([200, 30, 30, 255]))
+            .save(q.join("art/logo.png"))
+            .unwrap();
+        std::fs::write(
+            q.join("Dioxus.toml"),
+            "[application]\nname = \"x\"\n\n[bundle]\nidentifier = \"x\"\nicon = [\"art/logo.png\"]\n",
+        )
+        .unwrap();
+        let said = use_project_icons(&q, &res2).unwrap().unwrap();
+        assert!(said.contains("art/logo.png"), "{said}");
+        assert!(!res2.join("mipmap-hdpi/ic_launcher.webp").exists());
+        assert!(!res2.join("mipmap-anydpi-v26/ic_launcher.xml").exists());
+        let xxx = image::open(res2.join("mipmap-xxxhdpi/ic_launcher.png")).unwrap();
+        assert_eq!((xxx.width(), xxx.height()), (192, 192));
+        let round = image::open(res2.join("mipmap-mdpi/ic_launcher_round.png"))
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(round.get_pixel(0, 0)[3], 0, "corners are cut");
+        assert_eq!(round.get_pixel(24, 24)[3], 255);
 
         let src = p.join("gen/src");
         std::fs::create_dir_all(src.join("main/kotlin")).unwrap();

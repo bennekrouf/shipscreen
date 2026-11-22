@@ -115,3 +115,64 @@ fn the_dx_check_prefers_the_projects_own_dx() {
     assert!(out.status.success(), "{said}");
     assert!(said.contains("dx: 0.8.0-alpha.3"), "{said}");
 }
+
+#[test]
+fn every_android_script_makes_its_icons_the_same_way() {
+    for s in [
+        script_android_release("A", "a", "com.a", "1.0", 1),
+        script_android("A", "a", "com.a"),
+        script_build_apk("A", "a", "com.a"),
+    ] {
+        assert!(s.contains(ANDROID_ICONS));
+        assert!(!s.contains("assets/icons/android"));
+    }
+    assert!(script_build_apk("A", "a", "com.a").contains("keytool -genkeypair"));
+}
+
+/// The icon block, run for real: nothing to use leaves dx's icons alone;
+/// a `[bundle] icon` becomes a full mipmap set.
+#[cfg(target_os = "macos")]
+#[test]
+fn the_icon_block_makes_a_set_from_the_bundle_icon() {
+    let dir = std::env::temp_dir().join("shipscreen-test-icon-block");
+    let _ = std::fs::remove_dir_all(&dir);
+    let res = dir.join("res");
+    std::fs::create_dir_all(res.join("mipmap-anydpi-v26")).unwrap();
+    std::fs::write(res.join("mipmap-anydpi-v26/ic_launcher.xml"), "adaptive").unwrap();
+    let run = || {
+        std::process::Command::new("bash")
+            .arg("-ec")
+            .arg(format!("RES_DIR=res\n{ANDROID_ICONS}"))
+            .current_dir(&dir)
+            .output()
+            .unwrap()
+    };
+    let out = run();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("keeping dx's default icons"));
+    assert!(res.join("mipmap-anydpi-v26/ic_launcher.xml").exists());
+
+    std::fs::create_dir_all(dir.join("art")).unwrap();
+    image::RgbaImage::from_pixel(256, 256, image::Rgba([10, 120, 200, 255]))
+        .save(dir.join("art/logo.png"))
+        .unwrap();
+    std::fs::write(
+        dir.join("Dioxus.toml"),
+        "[application]\nicon = [\"nope.png\"]\n\n[bundle]\nidentifier = \"a\"\nicon = [\"art/logo.png\"]\n",
+    )
+    .unwrap();
+    let out = run();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("made from art/logo.png"));
+    assert!(!res.join("mipmap-anydpi-v26/ic_launcher.xml").exists());
+    let img = image::open(res.join("mipmap-xxhdpi/ic_launcher_round.png")).unwrap();
+    assert_eq!((img.width(), img.height()), (144, 144));
+}
