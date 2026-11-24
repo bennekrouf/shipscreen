@@ -183,14 +183,14 @@ skipped, not that the build fails.
 ## Use from Claude (MCP)
 
 `shipscreen mcp` serves the projects to an MCP client over stdio, with no
-window (`src/workspace/mcp.rs`); the **MCP** button in a project's sidebar
-shows the Claude Desktop config and the Claude Code command. The tools:
-`list_projects`, `get_project`, `set_app`, `set_version`, `set_languages`,
-`set_screens`, `set_store_text`, `generate_screenshots` (the manual style) and
-`build`. They run the workspace's own code: `jobs::generate_manual_images`,
-`jobs::build` with `BuildInputs::problem` checked first, and the same seeding
-of a project's identity and numbers as opening it. Store uploads are not
-exposed.
+window (`src/workspace/mcp.rs`). The **MCP** button at the top of the window
+installs it in Claude Desktop, Claude Code, Codex and VS Code, shows where it
+is installed and running, and tests it. The tools: `list_projects`,
+`get_project`, `set_app`, `set_version`, `set_languages`, `set_screens`,
+`set_store_text`, `generate_screenshots` (the manual style) and `build`. They
+run the workspace's own code: `jobs::generate_manual_images`, `jobs::build`
+with `BuildInputs::problem` checked first, and the same seeding of a project's
+identity and numbers as opening it. Store uploads are not exposed.
 
 The server and the window share `shipscreen.json`: the server reads, changes
 and writes it in one go, and an open project reloads it when another process
