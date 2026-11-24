@@ -19,13 +19,9 @@ user sees in the update prompt should all be accounted for.
 
 ### Changed
 
-- The MCP window now connects ShipScreen for you. For Claude Desktop, Claude
-  Code, Codex and VS Code it shows whether ShipScreen is installed there and
-  running, with Install, Update and Uninstall buttons, and a Test that starts
-  the server and counts its tools. Before, you copied commands and edited
-  Claude's config file yourself; those steps are still there, under By hand.
-- Claude Desktop undoes a change made to its settings while it is open:
-  ShipScreen waits for you to quit it, then installs.
+- The MCP window now connects ShipScreen for you. For Claude Desktop, Claude Code, Codex and VS Code it shows whether ShipScreen is installed there and running, with Install, Update and Uninstall buttons, and a Test that starts the server and counts its tools. Before, you copied commands and edited Claude's config file yourself; those steps are still there, under By hand.
+- Claude Desktop undoes a change made to its settings while it is open: ShipScreen waits for you to quit it, then installs.
+- A missing App Store Connect or Google Play key on the Accounts step no longer shows only red "… is not set" rows. The rows now say the key is not set up yet, and a short note above the setup form says what the key is for and points you to the form below it: reuse a key this Mac already has, or follow the steps to make one, and ShipScreen saves it in the project's `.env`.
 
 ## [0.1.73] - 2026-11-22
 
