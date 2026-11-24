@@ -19,7 +19,7 @@ user sees in the update prompt should all be accounted for.
 
 ### Changed
 
-## [Unreleased]
+## [0.1.75] - 2026-11-24
 
 ### Changed
 
