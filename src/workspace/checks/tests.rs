@@ -118,6 +118,73 @@ fn version_rules() {
 }
 
 #[test]
+fn bump_last_keeps_the_number_of_parts() {
+    assert_eq!(bump_last("1.0"), "1.1");
+    assert_eq!(bump_last("1.2.3"), "1.2.4");
+    assert_eq!(bump_last("2"), "3");
+    assert_eq!(bump_last(" 1.9 "), "1.10");
+}
+
+fn rec(platform: &str, version: &str, action: &str) -> ReleaseRecord {
+    ReleaseRecord {
+        at: "2026-11-24 10:00".into(),
+        platform: platform.into(),
+        version: version.into(),
+        build: 5,
+        action: action.into(),
+    }
+}
+
+#[test]
+fn same_version_as_the_last_release_is_spotted_per_store() {
+    // Newest first.
+    let releases = vec![
+        rec("android", "1.1", "Listing uploaded"),
+        rec("ios", "1.1", "Uploaded build"),
+        rec("android", "1.0", "Released to internal (draft)"),
+        rec("ios", "1.0", "Submitted for review"),
+    ];
+    assert_eq!(
+        repeats_last_release(&releases, "android", "1.0").as_deref(),
+        Some("1.0")
+    );
+    assert_eq!(repeats_last_release(&releases, "android", "1.1"), None);
+    assert_eq!(
+        repeats_last_release(&releases, "ios", "1.0").as_deref(),
+        Some("1.0")
+    );
+    assert_eq!(repeats_last_release(&releases, "ios", "1.1"), None);
+    assert_eq!(repeats_last_release(&[], "android", "1.0"), None);
+}
+
+#[test]
+fn never_rolled_out_until_a_completed_release() {
+    assert!(never_rolled_out(&[]));
+    assert!(never_rolled_out(&[rec(
+        "android",
+        "1.0",
+        "Released to internal (draft)"
+    )]));
+    assert!(!never_rolled_out(&[
+        rec("android", "1.1", "Released to internal (draft)"),
+        rec("android", "1.0", "Released to internal (completed)"),
+    ]));
+}
+
+#[test]
+fn play_release_name_with_and_without_label() {
+    assert_eq!(play_release_name("1.0", 6, ""), "1.0 (6)");
+    assert_eq!(play_release_name("1.0", 6, "   "), "1.0 (6)");
+    assert_eq!(
+        play_release_name("1.0", 6, " Document  scanner "),
+        "1.0 (6) · Document scanner"
+    );
+    let long = play_release_name("1.0", 6, &"x".repeat(80));
+    assert_eq!(long.chars().count(), 50);
+    assert!(long.starts_with("1.0 (6) · "));
+}
+
+#[test]
 fn android_output_is_per_language_inside_the_project() {
     let project = std::env::temp_dir().join("shipscreen-test-android-out");
     let _ = std::fs::remove_dir_all(&project);

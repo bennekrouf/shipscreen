@@ -230,6 +230,76 @@ pub(crate) fn job_button(
     }
 }
 
+/// Warning shown before a release that would repeat the last release's
+/// Version: offers a one-click raise, or keeping it. Releasing stays possible.
+fn same_version_warning(
+    ws: Ws,
+    repeated: Option<String>,
+    rebuild: &'static str,
+    mut kept: Signal<Option<String>>,
+    mut raised: Signal<Option<String>>,
+) -> Element {
+    let version = ws.proj.read().version.trim().to_string();
+    if let Some(v) = raised.read().clone().filter(|v| *v == version) {
+        return rsx! {
+            div { class: "release-note",
+                p { "Version raised to {v}. Rebuild the {rebuild} in the Build step so it carries it." }
+                div { class: "release-note-actions",
+                    button { class: "btn", onclick: move |_| ws.go(Step::Build), "Go to Build" }
+                }
+            }
+        };
+    }
+    let Some(last) = repeated else { return rsx! {} };
+    if kept.read().as_deref() == Some(last.as_str()) {
+        return rsx! {};
+    }
+    let next = bump_last(&last);
+    let keep = last.clone();
+    rsx! {
+        div { class: "release-note",
+            p {
+                "Still {last}, the same as the last release. Only the build number changes, so testers can't tell the builds apart. Raise it?"
+            }
+            div { class: "release-note-actions",
+                button {
+                    class: "btn",
+                    onclick: move |_| {
+                        let next = next.clone();
+                        ws.update(|p| p.version = next.clone());
+                        raised.set(Some(next));
+                    },
+                    "Raise to {bump_last(&last)}"
+                }
+                button { class: "btn", onclick: move |_| kept.set(Some(keep.clone())), "Keep {last}" }
+            }
+        }
+    }
+}
+
+/// After a Draft release: it isn't live, and where to roll it out.
+fn play_draft_note(track: &str, first_release: bool) -> Element {
+    let track_name = match track {
+        "internal" => "Internal testing",
+        "alpha" => "Closed testing",
+        "beta" => "Open testing",
+        _ => "Production",
+    };
+    rsx! {
+        div { class: "release-note",
+            p { strong { "Uploaded as a draft: testers can't see it yet." } }
+            p {
+                "To roll it out, open the app in "
+                a { href: "https://play.google.com/console", target: "_blank", "Play Console" }
+                ", go to Test and release → {track_name}, then Edit release → Next → Save and publish."
+            }
+            if first_release {
+                p { "Google only takes drafts for an app that was never published. Roll it out once in Play Console; after that, choose Roll out here." }
+            }
+        }
+    }
+}
+
 #[component]
 pub(crate) fn SubmitStep() -> Element {
     let ws = use_context::<Ws>();
@@ -270,6 +340,18 @@ pub(crate) fn SubmitStep() -> Element {
     };
     let running = |k: JobKind| matches!(ws.job_state(k), JobState::Running(_));
     let is_mac = cfg!(target_os = "macos");
+    // Same-version warnings: which version the user chose to keep, or raised to.
+    let ios_kept = use_signal(|| None::<String>);
+    let ios_raised = use_signal(|| None::<String>);
+    let play_kept = use_signal(|| None::<String>);
+    let play_raised = use_signal(|| None::<String>);
+    let ios_repeat = repeats_last_release(&p.releases, "ios", &version);
+    let play_repeat = repeats_last_release(&p.releases, "android", &version);
+    let play_draft = matches!(ws.job_state(JobKind::PlayRelease), JobState::Ok(_))
+        && p.releases
+            .iter()
+            .find(|r| r.platform == "android" && r.action.starts_with("Released to"))
+            .is_some_and(|r| r.action.ends_with("(draft)"));
 
     rsx! {
         div { class: "platform-cards",
@@ -314,6 +396,7 @@ pub(crate) fn SubmitStep() -> Element {
                                 input { r#type: "checkbox", checked: p.exempt_encryption, onchange: move |e: Event<FormData>| ws.update(|p| p.exempt_encryption = e.value() == "true") }
                                 span { "The app uses only exempt encryption (HTTPS, OS crypto)" }
                             }
+                            {same_version_warning(ws, ios_repeat, "IPA, upload it", ios_kept, ios_raised)}
                             {job_button("Submit for review", "Submitting…", running(JobKind::AppStoreReview), false, "btn btn-publish",
                                 move |_| jobs::submit_for_review(ws))}
                         })}
@@ -365,8 +448,23 @@ pub(crate) fn SubmitStep() -> Element {
                                 }
                             }
                             p { class: "settings-hint", "Apps that were never published only accept Draft." }
+                            input {
+                                class: "text-input",
+                                r#type: "text",
+                                maxlength: "40",
+                                placeholder: "Label (optional), e.g. Document scanner",
+                                value: "{p.play_release_label}",
+                                oninput: move |e: Event<FormData>| ws.update(|p| p.play_release_label = e.value()),
+                            }
+                            p { class: "settings-hint",
+                                "Added to the release name in Play Console after the version and build number, e.g. 1.0 (6) · Document scanner. Cleared after each release."
+                            }
+                            {same_version_warning(ws, play_repeat, "AAB", play_kept, play_raised)}
                             {job_button("Release AAB", "Releasing…", running(JobKind::PlayRelease), artifacts.aab.is_none(), "btn btn-publish btn-publish-android",
                                 move |_| jobs::release_aab(ws))}
+                            if play_draft {
+                                {play_draft_note(&p.play_track, never_rolled_out(&p.releases))}
+                            }
                         })}
                 }
             }

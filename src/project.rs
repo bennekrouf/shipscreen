@@ -112,6 +112,10 @@ pub(super) struct ProjectState {
     /// Google Play release status: draft / completed
     #[serde(default = "default_play_status")]
     pub(super) play_release_status: String,
+    /// Optional words added to the next Play release's name ("1.0 (6) · label");
+    /// cleared once that release is made
+    #[serde(default)]
+    pub(super) play_release_label: String,
     /// What was shipped, newest first
     #[serde(default)]
     pub(super) releases: Vec<ReleaseRecord>,

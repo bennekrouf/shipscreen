@@ -271,6 +271,80 @@ pub(super) fn bump_version(v: &str, idx: usize) -> String {
         .join(".")
 }
 
+/// The next version with as many parts as this one: 1.0 → 1.1, 1.2.3 → 1.2.4,
+/// 2 → 3. The one-click raise offered when a release would repeat a version.
+pub(crate) fn bump_last(v: &str) -> String {
+    let mut parts: Vec<u64> = v
+        .trim()
+        .split('.')
+        .map(|p| p.parse().unwrap_or(0))
+        .collect();
+    if let Some(last) = parts.last_mut() {
+        *last += 1;
+    }
+    parts
+        .iter()
+        .map(u64::to_string)
+        .collect::<Vec<_>>()
+        .join(".")
+}
+
+/// Actions in the release history that put a build in front of people, per
+/// store: a Play track release, an App Store submission. Listing uploads and
+/// plain IPA uploads (TestFlight) don't count.
+fn is_build_release(r: &ReleaseRecord, platform: &str) -> bool {
+    r.platform == platform
+        && match platform {
+            "android" => r.action.starts_with("Released to"),
+            "ios" => r.action == "Submitted for review",
+            _ => false,
+        }
+}
+
+/// The version of the last release on `platform` ("ios" / "android") when
+/// it is the same as `version`: releasing again would show the same version
+/// on phones and in the store, only the build number changes.
+pub(crate) fn repeats_last_release(
+    releases: &[ReleaseRecord],
+    platform: &str,
+    version: &str,
+) -> Option<String> {
+    let version = version.trim();
+    releases
+        .iter()
+        .find(|r| is_build_release(r, platform))
+        .filter(|r| !version.is_empty() && r.version.trim() == version)
+        .map(|r| r.version.trim().to_string())
+}
+
+/// True when Android was never rolled out from here: the last Android
+/// release (if any) and all before it were drafts.
+pub(crate) fn never_rolled_out(releases: &[ReleaseRecord]) -> bool {
+    !releases
+        .iter()
+        .any(|r| is_build_release(r, "android") && !r.action.ends_with("(draft)"))
+}
+
+/// Play's release names are at most 50 characters.
+const PLAY_RELEASE_NAME_MAX: usize = 50;
+
+/// The Play release name: "1.0 (6)", or "1.0 (6) · Document scanner" with a
+/// label, the label cut so the name fits Play's limit.
+pub(crate) fn play_release_name(version: &str, code: u32, label: &str) -> String {
+    let base = format!("{} ({code})", version.trim());
+    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+    if label.is_empty() {
+        return base;
+    }
+    let sep = " · ";
+    let room = PLAY_RELEASE_NAME_MAX.saturating_sub(base.chars().count() + sep.chars().count());
+    if room == 0 {
+        return base;
+    }
+    let cut: String = label.chars().take(room).collect();
+    format!("{base}{sep}{}", cut.trim_end())
+}
+
 /// `key = value` from a TOML file, unquoted — enough for Dioxus.toml's
 /// `version_code` / `version_name`.
 fn toml_value(text: &str, key: &str) -> Option<String> {

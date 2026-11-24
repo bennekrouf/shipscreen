@@ -155,6 +155,7 @@ pub(super) fn describe(dir: &std::path::Path, p: &ProjectState, settings: &Setti
         "exempt_encryption": p.exempt_encryption,
         "play_track": p.play_track,
         "play_release_status": p.play_release_status,
+        "play_release_label": p.play_release_label,
         "version": p.version,
         "ios_build_number": p.ios_build_number,
         "android_version_code": p.android_version_code,
@@ -226,6 +227,9 @@ pub(super) fn set_app(args: &Value) -> Result<Value, String> {
                 ));
             }
             p.play_release_status = v;
+        }
+        if let Some(v) = args["play_release_label"].as_str() {
+            p.play_release_label = v.trim().to_string();
         }
         Ok(())
     })?;
