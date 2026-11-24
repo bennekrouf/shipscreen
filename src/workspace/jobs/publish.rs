@@ -613,7 +613,8 @@ pub(crate) fn release_aab(ws: Ws) {
     };
     let track = p.play_track.clone();
     let status = p.play_release_status.clone();
-    let version = p.version.trim().to_string();
+    let project_version = p.version.trim().to_string();
+    let label = p.play_release_label.clone();
     // Play caps release notes at 500 characters per language.
     let notes: Vec<(String, String)> = p
         .locales
@@ -633,7 +634,7 @@ pub(crate) fn release_aab(ws: Ws) {
 
     ws.spawn(async move {
         let mut push = move |msg: String| log.write().push(msg);
-        let result: Result<u32, String> = async {
+        let result: Result<(String, u32), String> = async {
             push("🔑 Authenticating with Google…".into());
             let (token, package) = play_auth(&dir, &p.android_bundle_id).await?;
             let edit_id = google_play_create_edit(&token, &package).await?;
@@ -647,7 +648,19 @@ pub(crate) fn release_aab(ws: Ws) {
                 .await
                 .ok()
                 .flatten();
-            if let Some(code) = manifest.and_then(|m| m.version_code) {
+            // The version the bundle carries, which phones will show; the
+            // Version step's only if the bundle can't be read.
+            let version = manifest
+                .as_ref()
+                .and_then(|m| m.version_name.clone())
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| project_version.clone());
+            if version != project_version {
+                push(format!(
+                    "⚠️  This AAB is version {version}, the Version step says {project_version} — rebuild it to ship {project_version}."
+                ));
+            }
+            if let Some(code) = manifest.as_ref().and_then(|m| m.version_code) {
                 if let Some((max, track)) = stores::play_max_version_code(&token, &package, &edit_id).await? {
                     if code <= max {
                         let _ = google_play_delete_edit(&token, &package, &edit_id).await;
@@ -658,14 +671,14 @@ pub(crate) fn release_aab(ws: Ws) {
                 }
             }
 
-            let released: Result<u32, String> = async {
+            let released: Result<(String, u32), String> = async {
                 push(format!("⬆  Uploading {}…", aab.summary()));
                 let code = stores::play_upload_bundle(&token, &package, &edit_id, &aab.path).await?;
                 push(format!("✅ Bundle accepted — versionCode {code}"));
                 push(format!("🚦 Setting {track} track to {version} ({code}), status {status}…"));
                 stores::play_update_track(&token, &package, &edit_id, stores::TrackRelease {
                     track: &track,
-                    name: format!("{version} ({code})"),
+                    name: play_release_name(&version, code, &label),
                     version_code: code,
                     status: &status,
                     notes: &notes,
@@ -673,7 +686,7 @@ pub(crate) fn release_aab(ws: Ws) {
                 .await?;
                 push("💾 Committing edit…".into());
                 google_play_commit_edit(&token, &package, &edit_id).await?;
-                Ok(code)
+                Ok((version.clone(), code))
             }
             .await;
             if released.is_err() {
@@ -684,9 +697,15 @@ pub(crate) fn release_aab(ws: Ws) {
         .await;
 
         match result {
-            Ok(code) => {
+            Ok((version, code)) => {
                 record_release(ws, "android", &version, code, &format!("Released to {track} ({status})"));
-                state.set(JobState::Ok(format!("{version} ({code}) on {track}")));
+                // The label described this release; the next one starts empty.
+                ws.update(|p| p.play_release_label.clear());
+                state.set(JobState::Ok(if status == "draft" {
+                    format!("{version} ({code}) uploaded to {track} as a draft — not live yet")
+                } else {
+                    format!("{version} ({code}) on {track}")
+                }));
             }
             Err(e) => state.set(JobState::Failed(e)),
         }

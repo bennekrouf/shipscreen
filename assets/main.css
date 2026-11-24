@@ -1885,6 +1885,20 @@ a.btn { text-decoration: none; }
     gap: var(--s2);
 }
 
+/* Submit step: a note under a stage (same version as last time, draft release) */
+.release-note {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s3);
+    border: 1px solid var(--yellow);
+    border-radius: 8px;
+    font-size: var(--fs-sm);
+    color: var(--text2);
+}
+.release-note p { margin: 0; line-height: 1.45; }
+.release-note-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
 /* Release history */
 .history {
     width: 100%;
