@@ -54,6 +54,7 @@ pub(super) fn tools() -> Value {
                     "exempt_encryption": { "type": "boolean", "description": "The app only uses exempt encryption (HTTPS and the like)." },
                     "play_track": { "type": "string", "enum": ["internal", "alpha", "beta", "production"] },
                     "play_release_status": { "type": "string", "enum": ["draft", "completed"] },
+                    "play_release_label": { "type": "string", "description": "Optional words added to the next Play release's name: \"1.0 (6) · label\". Empty for the plain name; cleared after each release." },
                 },
                 "required": ["project"],
             },

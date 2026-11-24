@@ -25,6 +25,26 @@ user sees in the update prompt should all be accounted for.
   points you to the form below it: reuse a key this Mac already has, or follow
   the steps to make one, and ShipScreen saves it in the project's `.env`.
 
+### Added
+
+- Releasing with the same Version as the last release now warns you first, on
+  the Submit step for both Google Play and the App Store: "Still 1.0, the same
+  as the last release". One click raises it (1.0 → 1.1) and reminds you to
+  rebuild; you can also keep it and release anyway. Before, builds 1.0 (5),
+  1.0 (6), 1.0 (7) all looked the same to testers.
+- An optional label for Google Play releases, next to Release AAB. It is added
+  to the release name in Play Console, as in "1.0 (6) · Document scanner", so
+  the release list is easier to read. Left empty, the name is as before.
+
+### Changed
+
+- A Google Play release made with the status Draft now says so plainly: it
+  is not live and testers can't see it yet. A note under the Release stage
+  tells you where in Play Console to roll it out and, for an app that was
+  never published, that you only need to do this once.
+- The Google Play release name now uses the version inside the AAB, and the
+  release log warns if it differs from the one in the Version step.
+
 ## [0.1.73] - 2026-11-22
 
 ### Fixed
