@@ -20,6 +20,9 @@ pub(crate) fn PlayCard() -> Element {
                     PlayKeySetup {}
                 }
             } else {
+                p { class: "settings-hint hint-error",
+                    "ShipScreen needs this key to upload your bundles, screenshots and store text to Google Play. Set it up below: reuse a key this Mac already has, or follow the steps to make one. ShipScreen saves it in the project's .env for you."
+                }
                 PlayKeySetup {}
             }
             {connection_test(ws.play_test.read().clone(), move |_| jobs::test_google_play(ws))}

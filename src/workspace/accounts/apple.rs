@@ -238,6 +238,9 @@ pub(crate) fn AppleCard() -> Element {
                     AscKeySetup {}
                 }
             } else {
+                p { class: "settings-hint hint-error",
+                    "ShipScreen needs this key to upload your builds, screenshots and store text, and to create certificates and profiles. Set it up below: reuse a key this Mac already has, or follow the four steps to make one. ShipScreen saves it in the project's .env for you."
+                }
                 AscKeySetup {}
             }
             {connection_test(ws.asc_test.read().clone(), move |_| jobs::test_app_store(ws))}

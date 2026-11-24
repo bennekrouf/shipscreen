@@ -13,7 +13,7 @@ pub(super) fn read_creds(dir: &std::path::Path) -> Creds {
         None => CredCheck {
             label,
             ok: false,
-            detail: format!("{key} is not set"),
+            detail: format!("Not set up yet ({key} in the project's .env)"),
         },
     };
     // `~/…` as the build script expands it
@@ -37,7 +37,7 @@ pub(super) fn read_creds(dir: &std::path::Path) -> Creds {
         None => CredCheck {
             label,
             ok: false,
-            detail: format!("{key} is not set"),
+            detail: format!("Not set up yet ({key} in the project's .env)"),
         },
     };
     Creds {

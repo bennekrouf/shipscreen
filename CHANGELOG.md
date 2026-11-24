@@ -15,6 +15,16 @@ Each heading is dated on the day its tag was pushed. Releases that carried only
 build or packaging work say so rather than being hidden: the version numbers a
 user sees in the update prompt should all be accounted for.
 
+## [Unreleased]
+
+### Changed
+
+- A missing App Store Connect or Google Play key on the Accounts step no longer
+  shows only red "… is not set" rows. The rows now say the key is not set up
+  yet, and a short note above the setup form says what the key is for and
+  points you to the form below it: reuse a key this Mac already has, or follow
+  the steps to make one, and ShipScreen saves it in the project's `.env`.
+
 ## [0.1.73] - 2026-11-22
 
 ### Fixed
